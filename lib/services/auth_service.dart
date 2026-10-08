@@ -28,7 +28,9 @@ class AuthService {
         '/api/collections/${AppConfig.usersCollection}/records',
         data: <String, dynamic>{
           'email': email.trim(),
-          'username': username.trim(),
+          // The default PocketBase `users` collection exposes the display
+          // name as `name`.
+          'name': username.trim(),
           'password': password,
           'passwordConfirm': passwordConfirm,
         },
@@ -36,6 +38,34 @@ class AuthService {
       return User.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw Exception(_readError(e, 'Ошибка регистрации'));
+    }
+  }
+
+  /// Checks whether [value] is already taken by an `email` or a `name`.
+  ///
+  /// Relies on the collection List/Search API rule:
+  /// `@request.query.k = 'pb_av_1' && (email = @request.query.q || name = @request.query.q)`
+  ///
+  /// Returns `true` when the value is occupied. Throws when the server
+  /// rejects the request (for example when the rule is not configured yet).
+  Future<bool> isValueTaken(String value) async {
+    final query = value.trim();
+    if (query.isEmpty) return false;
+
+    try {
+      final response = await _api.dio.get(
+        '/api/collections/${AppConfig.usersCollection}/records',
+        queryParameters: <String, dynamic>{
+          AppConfig.availabilityKey: AppConfig.availabilityKey,
+          AppConfig.availabilityQuery: query,
+          'perPage': 1,
+        },
+      );
+      final data = response.data;
+      final total = data is Map ? (data['totalItems'] as num?)?.toInt() : null;
+      return (total ?? 0) > 0;
+    } on DioException catch (e) {
+      throw Exception(_readError(e, 'Не удалось проверить доступность'));
     }
   }
 

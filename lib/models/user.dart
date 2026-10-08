@@ -13,10 +13,14 @@ class User extends Equatable {
   final String username;
 
   factory User.fromJson(Map<String, dynamic> json) {
+    // PocketBase stores the display name in the `name` field of the default
+    // `users` collection; `username` is kept as a fallback for collections
+    // that define that field explicitly.
+    final rawName = json['name'] ?? json['username'];
     return User(
       id: json['id']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
-      username: json['username']?.toString() ?? '',
+      username: rawName?.toString() ?? '',
     );
   }
 

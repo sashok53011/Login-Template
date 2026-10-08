@@ -1,9 +1,14 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/auth_provider.dart';
 import '../utils/validators.dart';
+
+/// Availability of a value that is being checked against the backend.
+enum Avail { idle, checking, free, taken, unknown }
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -13,11 +18,19 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+  static const Duration _debounce = Duration(milliseconds: 700);
+
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+
+  Timer? _emailTimer;
+  Timer? _nameTimer;
+  Avail _emailAvail = Avail.idle;
+  Avail _nameAvail = Avail.idle;
+
   bool _obscure1 = true;
   bool _obscure2 = true;
   bool _loading = false;
@@ -26,16 +39,74 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   void initState() {
     super.initState();
-    _passCtrl.addListener(_onChanged);
-    _confirmCtrl.addListener(_onChanged);
+    _emailCtrl.addListener(_onEmailChanged);
+    _usernameCtrl.addListener(_onUsernameChanged);
+    _passCtrl.addListener(_onPasswordChanged);
+    _confirmCtrl.addListener(_onPasswordChanged);
   }
 
-  void _onChanged() => setState(() {});
+  void _onEmailChanged() {
+    setState(() {});
+    _emailTimer?.cancel();
+    final value = _emailCtrl.text.trim();
+    if (Validators.email(value) != null) {
+      if (_emailAvail != Avail.idle) {
+        setState(() => _emailAvail = Avail.idle);
+      }
+      return;
+    }
+    _emailTimer = Timer(_debounce, () => _runEmailCheck(value));
+  }
+
+  void _onUsernameChanged() {
+    setState(() {});
+    _nameTimer?.cancel();
+    final value = _usernameCtrl.text.trim();
+    if (Validators.username(value) != null) {
+      if (_nameAvail != Avail.idle) {
+        setState(() => _nameAvail = Avail.idle);
+      }
+      return;
+    }
+    _nameTimer = Timer(_debounce, () => _runNameCheck(value));
+  }
+
+  void _onPasswordChanged() => setState(() {});
+
+  Future<void> _runEmailCheck(String value) async {
+    setState(() => _emailAvail = Avail.checking);
+    try {
+      final taken =
+          await ref.read(authServiceProvider).isValueTaken(value);
+      if (!mounted || _emailCtrl.text.trim() != value) return;
+      setState(() => _emailAvail = taken ? Avail.taken : Avail.free);
+    } catch (_) {
+      if (!mounted || _emailCtrl.text.trim() != value) return;
+      setState(() => _emailAvail = Avail.unknown);
+    }
+  }
+
+  Future<void> _runNameCheck(String value) async {
+    setState(() => _nameAvail = Avail.checking);
+    try {
+      final taken =
+          await ref.read(authServiceProvider).isValueTaken(value);
+      if (!mounted || _usernameCtrl.text.trim() != value) return;
+      setState(() => _nameAvail = taken ? Avail.taken : Avail.free);
+    } catch (_) {
+      if (!mounted || _usernameCtrl.text.trim() != value) return;
+      setState(() => _nameAvail = Avail.unknown);
+    }
+  }
 
   @override
   void dispose() {
-    _passCtrl.removeListener(_onChanged);
-    _confirmCtrl.removeListener(_onChanged);
+    _emailTimer?.cancel();
+    _nameTimer?.cancel();
+    _emailCtrl.removeListener(_onEmailChanged);
+    _usernameCtrl.removeListener(_onUsernameChanged);
+    _passCtrl.removeListener(_onPasswordChanged);
+    _confirmCtrl.removeListener(_onPasswordChanged);
     _emailCtrl.dispose();
     _usernameCtrl.dispose();
     _passCtrl.dispose();
@@ -45,11 +116,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    if (_emailAvail == Avail.taken || _nameAvail == Avail.taken) {
+      setState(() => _serverError = 'Email или Username уже заняты');
+      return;
+    }
+
     FocusScope.of(context).unfocus();
     setState(() {
       _loading = true;
       _serverError = null;
     });
+
     try {
       await ref.read(authProvider.notifier).register(
             email: _emailCtrl.text,
@@ -102,7 +180,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   validator: Validators.email,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 6),
+                AvailBadge(status: _emailAvail),
+                const SizedBox(height: 10),
                 TextFormField(
                   controller: _usernameCtrl,
                   textInputAction: TextInputAction.next,
@@ -113,7 +193,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   validator: Validators.username,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 6),
+                AvailBadge(status: _nameAvail),
+                const SizedBox(height: 10),
                 TextFormField(
                   controller: _passCtrl,
                   obscureText: _obscure1,
@@ -130,7 +212,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   validator: Validators.password,
                 ),
                 const SizedBox(height: 8),
-                _Requirements(rules: rules),
+                RequirementsList(rules: rules),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _confirmCtrl,
@@ -150,7 +232,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ),
                 if (_serverError != null) ...<Widget>[
                   const SizedBox(height: 16),
-                  _ErrorBox(message: _serverError!),
+                  ErrorBox(message: _serverError!),
                 ],
                 const SizedBox(height: 24),
                 FilledButton(
@@ -177,8 +259,77 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 }
 
-class _Requirements extends StatelessWidget {
-  const _Requirements({required this.rules});
+/// Shows whether the value in the field is free to use.
+class AvailBadge extends StatelessWidget {
+  const AvailBadge({super.key, required this.status});
+
+  final Avail status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    switch (status) {
+      case Avail.idle:
+        return const SizedBox.shrink();
+      case Avail.checking:
+        return Row(
+          children: <Widget>[
+            const SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 8),
+            Text('Проверяем…', style: theme.textTheme.bodySmall),
+          ],
+        );
+      case Avail.free:
+        return _line(
+          context,
+          Icons.check_circle,
+          'Свободен',
+          Colors.green,
+        );
+      case Avail.taken:
+        return _line(context, Icons.cancel, 'Занят', theme.colorScheme.error);
+      case Avail.unknown:
+        return _line(
+          context,
+          Icons.help_outline,
+          'Не удалось проверить доступность',
+          theme.colorScheme.outline,
+        );
+    }
+  }
+
+  Widget _line(
+    BuildContext context,
+    IconData icon,
+    String text,
+    Color color,
+  ) {
+    return Row(
+      children: <Widget>[
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: color),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Live password requirements checklist.
+class RequirementsList extends StatelessWidget {
+  const RequirementsList({super.key, required this.rules});
 
   final List<PasswordRule> rules;
 
@@ -196,16 +347,15 @@ class _Requirements extends StatelessWidget {
                   Icon(
                     rule.ok ? Icons.check_circle : Icons.radio_button_unchecked,
                     size: 16,
-                    color: rule.ok
-                        ? Colors.green
-                        : theme.colorScheme.outline,
+                    color: rule.ok ? Colors.green : theme.colorScheme.outline,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       rule.label,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: rule.ok ? Colors.green : theme.colorScheme.outline,
+                        color:
+                            rule.ok ? Colors.green : theme.colorScheme.outline,
                       ),
                     ),
                   ),
@@ -218,8 +368,9 @@ class _Requirements extends StatelessWidget {
   }
 }
 
-class _ErrorBox extends StatelessWidget {
-  const _ErrorBox({required this.message});
+/// Inline server error box.
+class ErrorBox extends StatelessWidget {
+  const ErrorBox({super.key, required this.message});
 
   final String message;
 
