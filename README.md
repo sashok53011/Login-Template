@@ -70,6 +70,47 @@ lib/
 static const String baseUrl = 'https://your-domain.example';
 ```
 
+### Поле имени
+
+Во встроенной коллекции `users` PocketBase **нет поля `username`** — для имени
+используется системное поле `name`. Приложение отправляет и читает именно его:
+
+```dart
+'name': username.trim()          // при регистрации
+json['name'] ?? json['username'] // при чтении
+```
+
+### API Rules коллекции `users`
+
+| Правило | Значение |
+|---|---|
+| List/Search | `@request.query.k = 'pb_av_1' && (email = @request.query.q \|\| name = @request.query.q)` |
+| View | `- Superusers only` |
+| Create | *(пусто)* — регистрация открыта |
+| Update | `@request.auth.id = id` |
+| Delete | `- Superusers only` |
+
+Правило List/Search нужно только для проверки занятости. Запрос
+
+```text
+GET /api/collections/users/records?k=pb_av_1&q=someone@mail.ru
+```
+
+возвращает максимум одно совпадение и пусто во всех остальных случаях
+(без `k`, без `q`, с любым другим `filter`). Соответствие `totalItems`:
+
+- `1` — значение занято
+- `0` — свободно
+
+Секрет `k` (`AppConfig.availabilityKey`) защищает от массового перебора.
+Из APK его можно извлечь, поэтому это защита от случайного сканирования,
+а не от целенаправленной атаки. Поле `email` дополнительно скрыто ответом
+(`emailVisibility = false`) — наружу утекает только факт существования.
+
+> ⚠️ Поле `name` **не уникально** (PocketBase не умеет unique-индекс для
+> произвольного text-поля). Проверка покажет «Занят», но сервер дубликат
+> формально пропустит. Уникальность `email` гарантируется индексом.
+
 ## Сборка
 
 ```bash
