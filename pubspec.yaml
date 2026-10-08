@@ -1,0 +1,36 @@
+﻿name: login_app
+description: "Login/Registration template with PocketBase backend."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # HTTP client for PocketBase REST API
+  dio: ^5.9.0
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Declarative navigation
+  go_router: ^16.2.4
+
+  # Secure storage for the auth token
+  flutter_secure_storage: ^9.2.4
+
+  # Value equality for models
+  equatable: ^2.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
