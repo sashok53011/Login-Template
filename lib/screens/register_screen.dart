@@ -32,6 +32,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Timer? _nameTimer;
   Avail _emailAvail = Avail.idle;
   Avail _nameAvail = Avail.idle;
+  String _emailErr = '';
+  String _nameErr = '';
 
   bool _obscure1 = true;
   bool _obscure2 = true;
@@ -75,28 +77,40 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   void _onPasswordChanged() => setState(() {});
 
   Future<void> _runEmailCheck(String value) async {
-    setState(() => _emailAvail = Avail.checking);
+    setState(() {
+      _emailAvail = Avail.checking;
+      _emailErr = '';
+    });
     try {
       final taken =
           await ref.read(authServiceProvider).isValueTaken(value);
       if (!mounted || _emailCtrl.text.trim() != value) return;
       setState(() => _emailAvail = taken ? Avail.taken : Avail.free);
-    } catch (_) {
+    } catch (e) {
       if (!mounted || _emailCtrl.text.trim() != value) return;
-      setState(() => _emailAvail = Avail.unknown);
+      setState(() {
+        _emailAvail = Avail.unknown;
+        _emailErr = _clean(e);
+      });
     }
   }
 
   Future<void> _runNameCheck(String value) async {
-    setState(() => _nameAvail = Avail.checking);
+    setState(() {
+      _nameAvail = Avail.checking;
+      _nameErr = '';
+    });
     try {
       final taken =
           await ref.read(authServiceProvider).isValueTaken(value);
       if (!mounted || _usernameCtrl.text.trim() != value) return;
       setState(() => _nameAvail = taken ? Avail.taken : Avail.free);
-    } catch (_) {
+    } catch (e) {
       if (!mounted || _usernameCtrl.text.trim() != value) return;
-      setState(() => _nameAvail = Avail.unknown);
+      setState(() {
+        _nameAvail = Avail.unknown;
+        _nameErr = _clean(e);
+      });
     }
   }
 
@@ -204,7 +218,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   validator: Validators.email,
                 ),
                 const SizedBox(height: 6),
-                AvailBadge(status: _emailAvail),
+                AvailBadge(status: _emailAvail, detail: _emailErr),
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _usernameCtrl,
@@ -217,7 +231,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   validator: Validators.username,
                 ),
                 const SizedBox(height: 6),
-                AvailBadge(status: _nameAvail),
+                AvailBadge(status: _nameAvail, detail: _nameErr),
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _passCtrl,
@@ -280,9 +294,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
 /// Shows whether the value in the field is free to use.
 class AvailBadge extends StatelessWidget {
-  const AvailBadge({super.key, required this.status});
+  const AvailBadge({super.key, required this.status, this.detail});
 
   final Avail status;
+
+  /// Reason of the last failure, shown verbatim for [Avail.unknown].
+  final String? detail;
 
   @override
   Widget build(BuildContext context) {
@@ -313,10 +330,13 @@ class AvailBadge extends StatelessWidget {
       case Avail.taken:
         return _line(context, Icons.cancel, 'Занят', theme.colorScheme.error);
       case Avail.unknown:
+        final reason = detail?.trim() ?? '';
         return _line(
           context,
           Icons.help_outline,
-          'Не удалось проверить доступность',
+          reason.isEmpty
+              ? 'Не удалось проверить доступность'
+              : 'Не удалось проверить: $reason',
           theme.colorScheme.outline,
         );
     }

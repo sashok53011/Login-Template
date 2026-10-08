@@ -88,7 +88,7 @@ json['name'] ?? json['username'] // when reading
 
 | Rule | Value |
 |---|---|
-| List/Search | `@request.query.k = 'pb_av_1' && (email = @request.query.q \|\| name = @request.query.q)` |
+| List/Search | `@request.query.k = 'pb_av_1' && @request.query.q != '' && (email = @request.query.q \|\| name = @request.query.q)` |
 | View | `- Superusers only` |
 | Create | *(empty)* — registration is open |
 | Update | `@request.auth.id = id` |
@@ -106,9 +106,12 @@ any other `filter`). Meaning of `totalItems`:
 - `1` — the value is taken
 - `0` — the value is free
 
-The secret `k` (`AppConfig.availabilityKey`) guards against bulk enumeration.
-It can be extracted from the APK, so it protects against casual scanning rather
-than a determined attacker. The `email` field is additionally hidden by the
+The secret value of the `k` parameter (`AppConfig.availabilitySecret`, name in
+`AppConfig.availabilityParam`) guards against bulk enumeration. It can be
+extracted from the APK, so it protects against casual scanning rather
+than a determined attacker. The `@request.query.q != ''` guard is mandatory:
+without it a request with no `q` matches records whose `name` or `email` is
+empty. The `email` field is additionally hidden by the
 response (`emailVisibility = false`) — only the fact of existence leaks.
 
 > ⚠️ The `name` field is **not unique** (PocketBase cannot add a unique index

@@ -48,25 +48,45 @@ class AuthService {
   ///
   /// Returns `true` when the value is occupied. Throws when the server
   /// rejects the request (for example when the rule is not configured yet).
+  ///
+  /// Transient transport failures are retried once: the check runs on every
+  /// keystroke pause and a single tunnel hiccup must not read as "unknown".
   Future<bool> isValueTaken(String value) async {
     final query = value.trim();
     if (query.isEmpty) return false;
 
-    try {
-      final response = await _api.dio.get(
-        '/api/collections/${AppConfig.usersCollection}/records',
-        queryParameters: <String, dynamic>{
-          AppConfig.availabilityKey: AppConfig.availabilityKey,
-          AppConfig.availabilityQuery: query,
-          'perPage': 1,
-        },
-      );
-      final data = response.data;
-      final total = data is Map ? (data['totalItems'] as num?)?.toInt() : null;
-      return (total ?? 0) > 0;
-    } on DioException catch (e) {
-      throw Exception(_readError(e, 'Не удалось проверить доступность'));
+    const url = '/api/collections/${AppConfig.usersCollection}/records';
+    final params = <String, dynamic>{
+      AppConfig.availabilityParam: AppConfig.availabilitySecret,
+      AppConfig.availabilityQuery: query,
+      'perPage': 1,
+    };
+
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await _api.dio.get(url, queryParameters: params);
+        final data = response.data;
+        final total =
+            data is Map ? (data['totalItems'] as num?)?.toInt() : null;
+        return (total ?? 0) > 0;
+      } on DioException catch (e) {
+        final message = _readError(e, 'Не удалось проверить доступность');
+        if (attempt == 0 && _isTransportError(e)) {
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          continue;
+        }
+        throw Exception(message);
+      }
     }
+    return false;
+  }
+
+  /// True for failures that are worth repeating (no HTTP answer at all).
+  bool _isTransportError(DioException e) {
+    return e.response == null ||
+        e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.connectionError;
   }
 
   /// Login with email + password, then persist the session.

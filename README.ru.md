@@ -88,7 +88,7 @@ json['name'] ?? json['username'] // при чтении
 
 | Правило | Значение |
 |---|---|
-| List/Search | `@request.query.k = 'pb_av_1' && (email = @request.query.q \|\| name = @request.query.q)` |
+| List/Search | `@request.query.k = 'pb_av_1' && @request.query.q != '' && (email = @request.query.q \|\| name = @request.query.q)` |
 | View | `- Superusers only` |
 | Create | *(пусто)* — регистрация открыта |
 | Update | `@request.auth.id = id` |
@@ -106,9 +106,12 @@ GET /api/collections/users/records?k=pb_av_1&q=someone@mail.ru
 - `1` — значение занято
 - `0` — свободно
 
-Секрет `k` (`AppConfig.availabilityKey`) защищает от массового перебора.
+Секретное значение параметра `k` (`AppConfig.availabilitySecret`, имя —
+`AppConfig.availabilityParam`) защищает от массового перебора.
 Из APK его можно извлечь, поэтому это защита от случайного сканирования,
-а не от целенаправленной атаки. Поле `email` дополнительно скрыто ответом
+а не от целенаправленной атаки. Защита `@request.query.q != ''` обязательна:
+без неё запрос без `q` находит записи с пустыми `name` или `email`.
+Поле `email` дополнительно скрыто ответом
 (`emailVisibility = false`) — наружу утекает только факт существования.
 
 > ⚠️ Поле `name` **не уникально** (PocketBase не умеет unique-индекс для

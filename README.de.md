@@ -90,7 +90,7 @@ json['name'] ?? json['username'] // beim Lesen
 
 | Regel | Wert |
 |---|---|
-| List/Search | `@request.query.k = 'pb_av_1' && (email = @request.query.q \|\| name = @request.query.q)` |
+| List/Search | `@request.query.k = 'pb_av_1' && @request.query.q != '' && (email = @request.query.q \|\| name = @request.query.q)` |
 | View | `- Superusers only` |
 | Create | *(leer)* — Registrierung ist offen |
 | Update | `@request.auth.id = id` |
@@ -108,11 +108,14 @@ ohne `q`, mit jedem anderen `filter`). Bedeutung von `totalItems`:
 - `1` — der Wert ist belegt
 - `0` — der Wert ist frei
 
-Das Geheimnis `k` (`AppConfig.availabilityKey`) schützt vor Massenabfragen.
+Das Geheimnis des Parameters `k` (`AppConfig.availabilitySecret`, Name in
+`AppConfig.availabilityParam`) schützt vor Massenabfragen.
 Es lässt sich aus der APK extrahieren, schützt also vor zufälligem Scannen,
-nicht aber vor einem gezielten Angreifer. Das Feld `email` wird zusätzlich
-durch die Antwort verborgen (`emailVisibility = false`) — nach außen gelangt
-nur die Tatsache, dass das Konto existiert.
+nicht aber vor einem gezielten Angreifer. Die Bedingung
+`@request.query.q != ''` ist zwingend: ohne sie findet eine Anfrage ohne `q`
+Datensätze mit leerem `name` oder leerem `email`. Das Feld `email` wird
+zusätzlich durch die Antwort verborgen (`emailVisibility = false`) — nach
+außen gelangt nur die Tatsache, dass das Konto existiert.
 
 > ⚠️ Das Feld `name` ist **nicht eindeutig** (PocketBase kann keinen
 > Unique-Index auf ein beliebiges Textfeld legen). Die Prüfung meldet
