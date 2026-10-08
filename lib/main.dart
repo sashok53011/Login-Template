@@ -3,17 +3,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
+import 'screens/action_result_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
-import 'screens/register_success_screen.dart';
 import 'screens/splash_screen.dart';
 
-/// Routes that anonymous users are allowed to visit.
+/// Routes an anonymous user is allowed to visit.
 const Set<String> kAuthRoutes = <String>{
   '/login',
   '/register',
-  '/register-success',
+};
+
+/// Routes that always render the outcome of the last action and are never
+/// intercepted by the auth redirect: an anonymous user must be able to read a
+/// login failure, and a logged-in user must be able to read the confirmation.
+const Set<String> kResultRoutes = <String>{
+  '/register-result',
+  '/login-result',
 };
 
 void main() {
@@ -49,10 +56,14 @@ class _LoginAppState extends ConsumerState<LoginApp> {
 
         final onAuthPage = kAuthRoutes.contains(location);
 
+        // Result screens are exempt: they must render both for an anonymous
+        // visitor (login/register failed) and for an authenticated one
+        // (login succeeded).
+        if (kResultRoutes.contains(location)) return null;
+
         if (!auth.isLoggedIn && !onAuthPage) return '/login';
-        if (auth.isLoggedIn && (onAuthPage || location == '/splash')) {
-          return '/home';
-        }
+        if (auth.isLoggedIn && onAuthPage) return '/home';
+        if (auth.isLoggedIn && location == '/splash') return '/home';
         return null;
       },
       routes: <GoRoute>[
@@ -69,15 +80,12 @@ class _LoginAppState extends ConsumerState<LoginApp> {
           builder: (context, state) => const RegisterScreen(),
         ),
         GoRoute(
-          path: '/register-success',
-          builder: (context, state) {
-            final extra = state.extra;
-            final map = extra is Map ? extra : const <String, dynamic>{};
-            return RegisterSuccessScreen(
-              email: map['email']?.toString(),
-              username: map['username']?.toString(),
-            );
-          },
+          path: '/register-result',
+          builder: (context, state) => const ActionResultScreen(),
+        ),
+        GoRoute(
+          path: '/login-result',
+          builder: (context, state) => const ActionResultScreen(),
         ),
         GoRoute(
           path: '/home',

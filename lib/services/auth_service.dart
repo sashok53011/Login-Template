@@ -153,18 +153,97 @@ class AuthService {
   }
 
   String _readError(DioException e, String fallback) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.connectionError:
+        return 'Нет связи с сервером. Проверьте интернет-соединение.';
+      case DioExceptionType.cancel:
+        return 'Запрос был отменён.';
+      default:
+        break;
+    }
+
     final data = e.response?.data;
     if (data is Map) {
-      final message = data['message'] ?? data['error'];
-      if (message != null && message.toString().trim().isNotEmpty) {
-        final inner = data['data'];
-        if (inner is Map && inner.isNotEmpty) {
-          return '$message: ${inner.values.join(', ')}';
-        }
-        return message.toString();
-      }
+      final rawMessage =
+          (data['message'] ?? data['error'])?.toString().trim() ?? '';
+      final details = _describeDetails(data['data']);
+      final message = _localizeMessage(rawMessage);
+
+      if (details.isNotEmpty && message.isNotEmpty) return '$message $details';
+      if (details.isNotEmpty) return details;
+      if (message.isNotEmpty) return message;
     }
-    if (data is String && data.trim().isNotEmpty) return data;
-    return e.message ?? fallback;
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+
+    final localized = _localizeMessage(e.message?.trim() ?? '');
+    if (localized.isEmpty ||
+        localized.toLowerCase().contains('http status error')) {
+      return fallback;
+    }
+    return localized;
+  }
+
+  /// PocketBase reports failures in English; the app speaks Russian.
+  String _localizeMessage(String raw) {
+    if (raw.isEmpty) return '';
+    final m = raw.toLowerCase();
+    if (m.contains('failed to authenticate')) {
+      return 'Неверный email или пароль.';
+    }
+    if (m.contains('failed to create record')) {
+      return 'Не удалось создать аккаунт.';
+    }
+    if (m.contains('failed to update')) {
+      return 'Не удалось обновить данные.';
+    }
+    if (m.contains("wasn't found") || m.contains('not found')) {
+      return 'Запись не найдена.';
+    }
+    if (m.contains('too many requests')) {
+      return 'Слишком много попыток. Повторите позже.';
+    }
+    if (m.contains('something went wrong')) {
+      return 'Сервер вернул ошибку. Повторите позже.';
+    }
+    if (m.contains('token') && m.contains('expired')) {
+      return 'Сессия истекла. Войдите заново.';
+    }
+    return raw;
+  }
+
+  /// Turns the `data` map of a validation error into readable lines.
+  String _describeDetails(dynamic data) {
+    if (data is! Map || data.isEmpty) return '';
+    final parts = <String>[];
+    data.forEach((dynamic key, dynamic value) {
+      final String text;
+      if (value is Map) {
+        text = (value['message'] ?? value.values.join(', ')).toString();
+      } else {
+        text = value.toString();
+      }
+      parts.add('$key: ${_localizeField(text)}');
+    });
+    return parts.join('\n');
+  }
+
+  /// Translates the individual field messages PocketBase returns.
+  String _localizeField(String raw) {
+    final m = raw.toLowerCase();
+    if (m.contains('already exists') || m.contains('must be unique')) {
+      return 'занято';
+    }
+    if (m.contains('valid email')) return 'некорректный email';
+    if (m.contains('8 or more')) return 'минимум 8 символов';
+    if (m.contains('do not match') || m.contains('should match')) {
+      return 'значения не совпадают';
+    }
+    if (m.contains('required')) return 'обязательное поле';
+    if (m.contains('too short')) return 'слишком короткое значение';
+    if (m.contains('invalid')) return 'недопустимое значение';
+    return raw;
   }
 }

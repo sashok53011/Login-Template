@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../models/action_result.dart';
+import '../providers/action_result_provider.dart';
 import '../providers/auth_provider.dart';
 import '../utils/validators.dart';
 
@@ -34,7 +36,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _obscure1 = true;
   bool _obscure2 = true;
   bool _loading = false;
-  String? _serverError;
 
   @override
   void initState() {
@@ -117,39 +118,61 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
+    // Everything the async part needs is captured up front: go_router may
+    // move this form off-screen (redirect) while the request is in flight,
+    // and a disposed ConsumerState must not be touched afterwards.
+    final router = GoRouter.of(context);
+    final notifier = ref.read(authProvider.notifier);
+    final setResult = ref.read(actionResultProvider.notifier);
+    final email = _emailCtrl.text.trim();
+    final username = _usernameCtrl.text.trim();
+
+    List<ResultRow> rows() => <ResultRow>[
+          if (username.isNotEmpty)
+            ResultRow(label: 'Username', value: username),
+          if (email.isNotEmpty) ResultRow(label: 'Email', value: email),
+        ];
+
     if (_emailAvail == Avail.taken || _nameAvail == Avail.taken) {
-      setState(() => _serverError = 'Email или Username уже заняты');
+      setResult.state = ActionResult(
+        success: false,
+        kind: ActionKind.register,
+        message: 'Регистрация не выполнена',
+        description: 'Email или username уже заняты. '
+            'Если это ваш аккаунт — войдите с помощью него.',
+        rows: rows(),
+      );
+      router.push('/register-result');
       return;
     }
 
     FocusScope.of(context).unfocus();
-    setState(() {
-      _loading = true;
-      _serverError = null;
-    });
+    setState(() => _loading = true);
 
     try {
-      await ref.read(authProvider.notifier).register(
-            email: _emailCtrl.text,
-            username: _usernameCtrl.text,
-            password: _passCtrl.text,
-            passwordConfirm: _confirmCtrl.text,
-          );
-      if (!mounted) return;
-      context.go(
-        '/register-success',
-        extra: <String, String>{
-          'email': _emailCtrl.text.trim(),
-          'username': _usernameCtrl.text.trim(),
-        },
+      await notifier.register(
+        email: email,
+        username: username,
+        password: _passCtrl.text,
+        passwordConfirm: _confirmCtrl.text,
       );
+      setResult.state = ActionResult(
+        success: true,
+        kind: ActionKind.register,
+        message: 'Регистрация прошла успешно',
+        description: 'Аккаунт создан. Теперь войдите, чтобы продолжить.',
+        rows: rows(),
+      );
+      router.go('/register-result');
     } catch (e) {
-      if (mounted) {
-        setState(() => _serverError = _clean(e));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_serverError!)),
-        );
-      }
+      setResult.state = ActionResult(
+        success: false,
+        kind: ActionKind.register,
+        message: 'Регистрация не выполнена',
+        description: _clean(e),
+        rows: rows(),
+      );
+      router.push('/register-result');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -230,10 +253,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   validator: (v) =>
                       Validators.confirmPassword(v, _passCtrl.text),
                 ),
-                if (_serverError != null) ...<Widget>[
-                  const SizedBox(height: 16),
-                  ErrorBox(message: _serverError!),
-                ],
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: _loading ? null : _submit,
@@ -364,39 +383,6 @@ class RequirementsList extends StatelessWidget {
             ),
           )
           .toList(),
-    );
-  }
-}
-
-/// Inline server error box.
-class ErrorBox extends StatelessWidget {
-  const ErrorBox({super.key, required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: scheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(Icons.error_outline, color: scheme.onErrorContainer, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(color: scheme.onErrorContainer),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

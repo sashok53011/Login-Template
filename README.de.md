@@ -10,8 +10,7 @@ Anmeldung.
 
 - Registrierung: `E-Mail + Benutzername + Passwort + Passwort bestätigen`
 - Passwortanforderungen mit Live-Checkliste (mindestens 8 Zeichen, Passwörter müssen übereinstimmen)
-- Bildschirm „Registrierung erfolgreich" mit Schaltfläche „Zur Anmeldung"
-- Serverfehler werden direkt im Registrierungsformular angezeigt
+- Ergebnisbildschirm nach jeder Registrierung und Anmeldung: Erfolgsmeldung oder Fehlerbeschreibung, bei der Registrierung mit Schaltfläche „Zur Anmeldung"
 - Live-Verfügbarkeitsprüfung für E-Mail und Benutzername (belegt / frei während der Eingabe)
 - Anmeldung mit `E-Mail + Passwort`
 - Automatische Anmeldung beim App-Start (Sitzung wird wiederhergestellt)
@@ -39,8 +38,10 @@ lib/
 │   ├── config.dart          # baseUrl und Collection-Name
 │   └── constants.dart       # Speicherschlüssel
 ├── models/
+│   ├── action_result.dart   # Ergebnis der letzten Registrierungs-/Anmeldeversuche
 │   └── user.dart            # Benutzermodell + displayName
 ├── providers/
+│   ├── action_result_provider.dart
 │   └── auth_provider.dart   # AuthNotifier + Riverpod-Provider
 ├── services/
 │   ├── api_client.dart      # Dio + Auth-Header
@@ -50,7 +51,7 @@ lib/
 │   ├── splash_screen.dart
 │   ├── login_screen.dart
 │   ├── register_screen.dart
-│   ├── register_success_screen.dart
+│   ├── action_result_screen.dart
 │   └── home_screen.dart
 ├── utils/
 │   └── validators.dart      # Validierung der Formularfelder
@@ -117,6 +118,23 @@ nur die Tatsache, dass das Konto existiert.
 > Unique-Index auf ein beliebiges Textfeld legen). Die Prüfung meldet
 > „Belegt", der Server würde eine Duplikatannahme formal aber zulassen.
 > Die Eindeutigkeit von `email` ist durch einen Index garantiert.
+
+## Ergebnisbildschirme
+
+Jeder Registrierungs- und Anmeldeversuch endet auf einem Ergebnisbildschirm
+(`/register-result`, `/login-result`), der entweder die Erfolgsmeldung oder
+die Fehlerbeschreibung anzeigt:
+
+| Fall | Überschrift | Schaltflächen |
+|---|---|---|
+| Registrierung OK | Регистрация прошла успешно | Перейти к входу · Создать ещё один аккаунт |
+| Registrierung fehlgeschlagen | Регистрация не выполнена | Попробовать снова · Перейти к входу |
+| Anmeldung OK | Вход выполнен | Перейти в профиль |
+| Anmeldung fehlgeschlagen | Вход не выполнен | Попробовать снова · Создать аккаунт |
+
+Das Ergebnis wird über `actionResultProvider` weitergegeben, sodass ein
+Umleiten während der Anfrage es nicht verlieren kann. Fehler werden auf den
+Stapel *gepushd* — „Zurück" kehrt zum ausgefüllten Formular zurück.
 
 ## Kompilieren
 

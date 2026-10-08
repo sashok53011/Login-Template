@@ -9,8 +9,7 @@ and a `You are logged in as ...` screen after a successful sign-in.
 
 - Registration: `email + username + password + confirm password`
 - Password requirements with a live checklist (minimum 8 characters, passwords must match)
-- "Registration successful" screen with a "Go to sign in" button
-- Server errors displayed directly inside the registration form
+- Result screen after every registration and login: a success confirmation or an error description, with "Go to sign in" for registration
 - Live availability check for email and username (busy / free while typing)
 - Login with `email + password`
 - Auto-login on app start (session restore)
@@ -38,8 +37,10 @@ lib/
 │   ├── config.dart          # baseUrl and collection name
 │   └── constants.dart       # storage keys
 ├── models/
+│   ├── action_result.dart   # outcome of the last register/login attempt
 │   └── user.dart            # user model + displayName
 ├── providers/
+│   ├── action_result_provider.dart
 │   └── auth_provider.dart   # AuthNotifier + Riverpod providers
 ├── services/
 │   ├── api_client.dart      # Dio + auth header
@@ -49,7 +50,7 @@ lib/
 │   ├── splash_screen.dart
 │   ├── login_screen.dart
 │   ├── register_screen.dart
-│   ├── register_success_screen.dart
+│   ├── action_result_screen.dart
 │   └── home_screen.dart
 ├── utils/
 │   └── validators.dart      # form field validation
@@ -113,6 +114,23 @@ response (`emailVisibility = false`) — only the fact of existence leaks.
 > ⚠️ The `name` field is **not unique** (PocketBase cannot add a unique index
 > to an arbitrary text field). The check reports "Taken", but the server would
 > technically accept a duplicate. Uniqueness of `email` is guaranteed by an index.
+
+## Result screens
+
+Every register / login attempt ends on a result screen (`/register-result`,
+`/login-result`) that shows either a confirmation of success or the error
+description:
+
+| Case | Headline | Buttons |
+|---|---|---|
+| Registration OK | Регистрация прошла успешно | Перейти к входу · Создать ещё один аккаунт |
+| Registration failed | Регистрация не выполнена | Попробовать снова · Перейти к входу |
+| Login OK | Вход выполнен | Перейти в профиль |
+| Login failed | Вход не выполнен | Попробовать снова · Создать аккаунт |
+
+The outcome travels through `actionResultProvider`, so a redirect firing
+while the request is in flight cannot lose it. Failures are *pushed* onto the
+stack, so pressing Back returns to the still-filled form.
 
 ## Build
 

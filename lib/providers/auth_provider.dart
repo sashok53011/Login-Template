@@ -84,7 +84,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> register({
+  Future<User> register({
     required String email,
     required String username,
     required String password,
@@ -92,20 +92,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await _service.register(
+      final user = await _service.register(
         email: email,
         username: username,
         password: password,
         passwordConfirm: passwordConfirm,
       );
       state = state.copyWith(isLoading: false);
+      return user;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;
     }
   }
 
-  Future<void> login({
+  Future<User> login({
     required String email,
     required String password,
   }) async {
@@ -118,6 +119,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         isLoggedIn: true,
         displayName: user.displayName,
       );
+      return user;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;

@@ -2,6 +2,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../models/action_result.dart';
+import '../providers/action_result_provider.dart';
 import '../providers/auth_provider.dart';
 import '../utils/validators.dart';
 
@@ -28,19 +30,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    // Captured before the first await: the auth redirect may dispose this
+    // screen as soon as the login succeeds.
+    final router = GoRouter.of(context);
+    final notifier = ref.read(authProvider.notifier);
+    final setResult = ref.read(actionResultProvider.notifier);
+    final email = _emailCtrl.text.trim();
+
     FocusScope.of(context).unfocus();
     setState(() => _loading = true);
+
     try {
-      await ref.read(authProvider.notifier).login(
-            email: _emailCtrl.text,
-            password: _passCtrl.text,
-          );
+      final user = await notifier.login(email: email, password: _passCtrl.text);
+      setResult.state = ActionResult(
+        success: true,
+        kind: ActionKind.login,
+        message: 'Вход выполнен',
+        description: 'Добро пожаловать! Вы вошли в аккаунт.',
+        rows: <ResultRow>[
+          if (user.username.isNotEmpty)
+            ResultRow(label: 'Username', value: user.username),
+          if (user.email.isNotEmpty)
+            ResultRow(label: 'Email', value: user.email),
+          if (user.id.isNotEmpty) ResultRow(label: 'Id', value: user.id),
+        ],
+      );
+      router.go('/login-result');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_clean(e))),
-        );
-      }
+      setResult.state = ActionResult(
+        success: false,
+        kind: ActionKind.login,
+        message: 'Вход не выполнен',
+        description: _clean(e),
+        rows: <ResultRow>[
+          if (email.isNotEmpty) ResultRow(label: 'Email', value: email),
+        ],
+      );
+      router.push('/login-result');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
