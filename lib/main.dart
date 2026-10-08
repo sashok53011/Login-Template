@@ -6,7 +6,15 @@ import 'providers/auth_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
+import 'screens/register_success_screen.dart';
 import 'screens/splash_screen.dart';
+
+/// Routes that anonymous users are allowed to visit.
+const Set<String> kAuthRoutes = <String>{
+  '/login',
+  '/register',
+  '/register-success',
+};
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,8 +47,7 @@ class _LoginAppState extends ConsumerState<LoginApp> {
           return location == '/splash' ? null : '/splash';
         }
 
-        final onAuthPage =
-            location == '/login' || location == '/register';
+        final onAuthPage = kAuthRoutes.contains(location);
 
         if (!auth.isLoggedIn && !onAuthPage) return '/login';
         if (auth.isLoggedIn && (onAuthPage || location == '/splash')) {
@@ -60,6 +67,17 @@ class _LoginAppState extends ConsumerState<LoginApp> {
         GoRoute(
           path: '/register',
           builder: (context, state) => const RegisterScreen(),
+        ),
+        GoRoute(
+          path: '/register-success',
+          builder: (context, state) {
+            final extra = state.extra;
+            final map = extra is Map ? extra : const <String, dynamic>{};
+            return RegisterSuccessScreen(
+              email: map['email']?.toString(),
+              username: map['username']?.toString(),
+            );
+          },
         ),
         GoRoute(
           path: '/home',

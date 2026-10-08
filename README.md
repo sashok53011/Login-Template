@@ -6,6 +6,9 @@
 ## Функционал
 
 - Регистрация: `email + username + password + confirm password`
+- Требования к паролю с живым чек-листом (минимум 8 символов, пароли совпадают)
+- Экран «Регистрация прошла успешно» с кнопкой «Перейти к входу»
+- Ошибки сервера выводятся прямо в форме регистрации
 - Вход по `email + password`
 - Автологин при старте приложения (восстановление сессии)
 - Хранение токена в `flutter_secure_storage`
@@ -43,6 +46,7 @@ lib/
 │   ├── splash_screen.dart
 │   ├── login_screen.dart
 │   ├── register_screen.dart
+│   ├── register_success_screen.dart
 │   └── home_screen.dart
 ├── utils/
 │   └── validators.dart      # валидация полей форм

@@ -21,9 +21,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _obscure1 = true;
   bool _obscure2 = true;
   bool _loading = false;
+  String? _serverError;
+
+  @override
+  void initState() {
+    super.initState();
+    _passCtrl.addListener(_onChanged);
+    _confirmCtrl.addListener(_onChanged);
+  }
+
+  void _onChanged() => setState(() {});
 
   @override
   void dispose() {
+    _passCtrl.removeListener(_onChanged);
+    _confirmCtrl.removeListener(_onChanged);
     _emailCtrl.dispose();
     _usernameCtrl.dispose();
     _passCtrl.dispose();
@@ -34,7 +46,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusScope.of(context).unfocus();
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _serverError = null;
+    });
     try {
       await ref.read(authProvider.notifier).register(
             email: _emailCtrl.text,
@@ -43,14 +58,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             passwordConfirm: _confirmCtrl.text,
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Регистрация успешна. Теперь войдите.')),
+      context.go(
+        '/register-success',
+        extra: <String, String>{
+          'email': _emailCtrl.text.trim(),
+          'username': _usernameCtrl.text.trim(),
+        },
       );
-      context.go('/login');
     } catch (e) {
       if (mounted) {
+        setState(() => _serverError = _clean(e));
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_clean(e))),
+          SnackBar(content: Text(_serverError!)),
         );
       }
     } finally {
@@ -60,6 +79,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final rules = passwordRules(_passCtrl.text, _confirmCtrl.text);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Регистрация')),
       body: SafeArea(
@@ -70,7 +91,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
@@ -84,6 +105,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _usernameCtrl,
+                  textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: 'Username',
                     helperText: 'Показывается на главном экране',
@@ -107,6 +129,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   validator: Validators.password,
                 ),
+                const SizedBox(height: 8),
+                _Requirements(rules: rules),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _confirmCtrl,
@@ -121,8 +145,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       onPressed: () => setState(() => _obscure2 = !_obscure2),
                     ),
                   ),
-                  validator: (v) => Validators.confirmPassword(v, _passCtrl.text),
+                  validator: (v) =>
+                      Validators.confirmPassword(v, _passCtrl.text),
                 ),
+                if (_serverError != null) ...<Widget>[
+                  const SizedBox(height: 16),
+                  _ErrorBox(message: _serverError!),
+                ],
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: _loading ? null : _submit,
@@ -143,6 +172,79 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _Requirements extends StatelessWidget {
+  const _Requirements({required this.rules});
+
+  final List<PasswordRule> rules;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: rules
+          .map(
+            (PasswordRule rule) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    rule.ok ? Icons.check_circle : Icons.radio_button_unchecked,
+                    size: 16,
+                    color: rule.ok
+                        ? Colors.green
+                        : theme.colorScheme.outline,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      rule.label,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: rule.ok ? Colors.green : theme.colorScheme.outline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _ErrorBox extends StatelessWidget {
+  const _ErrorBox({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(Icons.error_outline, color: scheme.onErrorContainer, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(color: scheme.onErrorContainer),
+            ),
+          ),
+        ],
       ),
     );
   }
