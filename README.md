@@ -1,46 +1,49 @@
-﻿# Login Template (Flutter + PocketBase)
+> **English** · [Русский](README.ru.md) · [Deutsch](README.de.md)
 
-Шаблон Android-приложения с авторизацией: **регистрация**, **вход**, **выход** и экран
-`Вы зашли как ...` после успешного входа.
+# Login Template (Flutter + PocketBase)
 
-## Функционал
+Android app template with authentication: **registration**, **login**, **logout**
+and a `You are logged in as ...` screen after a successful sign-in.
 
-- Регистрация: `email + username + password + confirm password`
-- Требования к паролю с живым чек-листом (минимум 8 символов, пароли совпадают)
-- Экран «Регистрация прошла успешно» с кнопкой «Перейти к входу»
-- Ошибки сервера выводятся прямо в форме регистрации
-- Вход по `email + password`
-- Автологин при старте приложения (восстановление сессии)
-- Хранение токена в `flutter_secure_storage`
-- Экран главной страницы: `Вы зашли как <username / email / id>`
-- Выход из аккаунта с подтверждением
-- Splash-экран, пока восстанавливается сессия
-- Задел под Google OAuth (метод `signInWithGoogle()` в `auth_service.dart`)
+## Features
 
-## Стек
+- Registration: `email + username + password + confirm password`
+- Password requirements with a live checklist (minimum 8 characters, passwords must match)
+- "Registration successful" screen with a "Go to sign in" button
+- Server errors displayed directly inside the registration form
+- Live availability check for email and username (busy / free while typing)
+- Login with `email + password`
+- Auto-login on app start (session restore)
+- Token stored in `flutter_secure_storage`
+- Home screen: `You are logged in as <username / email / id>`
+- Logout with confirmation
+- Splash screen while the session is being restored
+- Hook for Google OAuth (`signInWithGoogle()` in `auth_service.dart`)
 
-| Пакет | Назначение |
+## Stack
+
+| Package | Purpose |
 | --- | --- |
-| `dio` | HTTP-клиент для REST API |
-| `flutter_riverpod` | управление состоянием |
-| `go_router` | навигация + маршрутизация по статусу авторизации |
-| `flutter_secure_storage` | безопасное хранение токена |
-| `equatable` | сравнение моделей |
+| `dio` | HTTP client for the REST API |
+| `flutter_riverpod` | state management |
+| `go_router` | navigation + auth-status routing |
+| `flutter_secure_storage` | secure token storage |
+| `equatable` | model comparison |
 
-## Структура
+## Structure
 
 ```
 lib/
 ├── core/
-│   ├── config.dart          # baseUrl и имя коллекции
-│   └── constants.dart       # ключи хранилища
+│   ├── config.dart          # baseUrl and collection name
+│   └── constants.dart       # storage keys
 ├── models/
-│   └── user.dart            # модель пользователя + displayName
+│   └── user.dart            # user model + displayName
 ├── providers/
-│   └── auth_provider.dart   # AuthNotifier + провайдеры Riverpod
+│   └── auth_provider.dart   # AuthNotifier + Riverpod providers
 ├── services/
-│   ├── api_client.dart      # Dio + авторизационный заголовок
-│   ├── auth_service.dart    # register / login / logout
+│   ├── api_client.dart      # Dio + auth header
+│   ├── auth_service.dart    # register / login / logout / availability
 │   └── secure_storage_service.dart
 ├── screens/
 │   ├── splash_screen.dart
@@ -49,91 +52,91 @@ lib/
 │   ├── register_success_screen.dart
 │   └── home_screen.dart
 ├── utils/
-│   └── validators.dart      # валидация полей форм
-└── main.dart                # MaterialApp.router + редиректы
+│   └── validators.dart      # form field validation
+└── main.dart                # MaterialApp.router + redirects
 ```
 
-## Бэкенд
+## Backend
 
-Бэкенд — самописный [PocketBase](https://pocketbase.io) на сервере, доступный
-через Cloudflare Tunnel.
+The backend is a self-hosted [PocketBase](https://pocketbase.io) instance on a
+server, reachable through a Cloudflare Tunnel.
 
-- Адрес API: `https://app.devhorizon.online`
-- Коллекция: `users` (встроенный тип `auth`)
-- Эндпоинты: `POST /api/collections/users/records` (регистрация),
-  `POST /api/collections/users/auth-with-password` (вход)
+- API base URL: `https://app.devhorizon.online`
+- Collection: `users` (built-in `auth` type)
+- Endpoints: `POST /api/collections/users/records` (registration),
+  `POST /api/collections/users/auth-with-password` (login)
 
-Смена адреса — один файл:
+Changing the base URL is a one-file change:
 
 ```dart
 // lib/core/config.dart
 static const String baseUrl = 'https://your-domain.example';
 ```
 
-### Поле имени
+### Name field
 
-Во встроенной коллекции `users` PocketBase **нет поля `username`** — для имени
-используется системное поле `name`. Приложение отправляет и читает именно его:
+PocketBase's built-in `users` collection has **no `username` field** — the
+system field `name` is used instead. The app sends and reads exactly that:
 
 ```dart
-'name': username.trim()          // при регистрации
-json['name'] ?? json['username'] // при чтении
+'name': username.trim()          // on registration
+json['name'] ?? json['username'] // when reading
 ```
 
-### API Rules коллекции `users`
+### API Rules for the `users` collection
 
-| Правило | Значение |
+| Rule | Value |
 |---|---|
 | List/Search | `@request.query.k = 'pb_av_1' && (email = @request.query.q \|\| name = @request.query.q)` |
 | View | `- Superusers only` |
-| Create | *(пусто)* — регистрация открыта |
+| Create | *(empty)* — registration is open |
 | Update | `@request.auth.id = id` |
 | Delete | `- Superusers only` |
 
-Правило List/Search нужно только для проверки занятости. Запрос
+The List/Search rule exists solely for the availability check. The request
 
 ```text
-GET /api/collections/users/records?k=pb_av_1&q=someone@mail.ru
+GET /api/collections/users/records?k=pb_av_1&q=someone@example.com
 ```
 
-возвращает максимум одно совпадение и пусто во всех остальных случаях
-(без `k`, без `q`, с любым другим `filter`). Соответствие `totalItems`:
+returns at most one match and nothing in every other case (no `k`, no `q`,
+any other `filter`). Meaning of `totalItems`:
 
-- `1` — значение занято
-- `0` — свободно
+- `1` — the value is taken
+- `0` — the value is free
 
-Секрет `k` (`AppConfig.availabilityKey`) защищает от массового перебора.
-Из APK его можно извлечь, поэтому это защита от случайного сканирования,
-а не от целенаправленной атаки. Поле `email` дополнительно скрыто ответом
-(`emailVisibility = false`) — наружу утекает только факт существования.
+The secret `k` (`AppConfig.availabilityKey`) guards against bulk enumeration.
+It can be extracted from the APK, so it protects against casual scanning rather
+than a determined attacker. The `email` field is additionally hidden by the
+response (`emailVisibility = false`) — only the fact of existence leaks.
 
-> ⚠️ Поле `name` **не уникально** (PocketBase не умеет unique-индекс для
-> произвольного text-поля). Проверка покажет «Занят», но сервер дубликат
-> формально пропустит. Уникальность `email` гарантируется индексом.
+> ⚠️ The `name` field is **not unique** (PocketBase cannot add a unique index
+> to an arbitrary text field). The check reports "Taken", but the server would
+> technically accept a duplicate. Uniqueness of `email` is guaranteed by an index.
 
-## Сборка
+## Build
 
 ```bash
 flutter pub get
-flutter build apk --debug     # тестовый APK
-flutter build apk --release   # релизный APK (нужен keystore)
+flutter build apk --debug     # test APK
+flutter build apk --release   # release APK (requires a keystore)
 ```
 
-APK появится в `build/app/outputs/flutter-apk/`.
+The APK ends up in `build/app/outputs/flutter-apk/`.
 
-## Точка расширения под соцсети
+## Extension point for social login
 
-В `lib/services/auth_service.dart`:
+In `lib/services/auth_service.dart`:
 
 ```dart
 Future<void> signInWithGoogle() async {
-  // TODO: включить Google OAuth в PocketBase (Settings > Auth providers)
+  // TODO: enable Google OAuth in PocketBase (Settings > Auth providers)
 }
 ```
 
-Включение провайдера в PocketBase + заполнение этого метода — этого
-достаточно, чтобы добавить вход через Google без переработки экранов.
+Enabling the provider in PocketBase and filling in this method is all it takes
+to add Google sign-in without reworking the screens.
 
-## Лицензия
+## License
 
 MIT
