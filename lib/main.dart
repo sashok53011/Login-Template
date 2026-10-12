@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
 import 'screens/action_result_screen.dart';
+import 'screens/ai_providers_list_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
@@ -90,6 +91,10 @@ class _LoginAppState extends ConsumerState<LoginApp> {
         GoRoute(
           path: '/home',
           builder: (context, state) => const HomeScreen(),
+        ),
+        GoRoute(
+          path: '/ai-providers',
+          builder: (context, state) => const AiProvidersListScreen(),
         ),
       ],
     );

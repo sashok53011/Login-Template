@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../providers/auth_provider.dart';
 
@@ -48,6 +49,12 @@ class HomeScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 const SizedBox(height: 32),
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.list_alt),
+                  label: const Text('AI-провайдеры'),
+                  onPressed: () => context.push('/ai-providers'),
+                ),
+                const SizedBox(height: 12),
                 FilledButton.tonalIcon(
                   icon: const Icon(Icons.logout),
                   label: const Text('Выйти'),
