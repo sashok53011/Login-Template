@@ -563,6 +563,34 @@ void main() {
     expect(find.textContaining('Найдено моделей: 1'), findsOneWidget);
   });
 
+  testWidgets('the paste button wakes up only when the field is focused',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[_entry('openai', 'OpenAI', 1)]),
+    );
+
+    await openProviders(tester, backend, FakeStorage());
+
+    final keyButton = find.widgetWithText(TextButton, 'Ввести ключ');
+    await tester.ensureVisible(keyButton);
+    await tester.pumpAndSettle();
+    await tester.tap(keyButton);
+    await tester.pumpAndSettle();
+
+    final paste = find.widgetWithText(TextButton, 'Вставить из буфера');
+    expect(paste, findsOneWidget);
+    // Disabled until the user actually touches the field.
+    expect(tester.widget<TextButton>(paste).onPressed, isNull);
+
+    await tester.tap(find.byType(TextField).last);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextButton>(paste).onPressed, isNotNull);
+
+    // An empty clipboard must not throw.
+    await tester.tap(paste);
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('a rejected key is reported as a failure',
       (WidgetTester tester) async {
     final backend = FakeAiBackend(

@@ -212,6 +212,10 @@ selbst aus, also derselbe Origin). Dort setzt ein Administrator das Häkchen
 „Вход администратора (superuser)" und pflegt den Katalog; ein normales Konto
 bekommt nur die Schalter.
 
+Ein Tipp auf die Zeile **API Key** öffnet den Schlüsseldialog; er enthält den
+Knopf **«Вставить из буфера»**, der erst aktiv wird, wenn das Feld fokussiert
+ist.
+
 Beim Synchronisieren werden nur die Einträge bearbeitet, die der Benutzer
 **ausgeschaltet** hat:
 

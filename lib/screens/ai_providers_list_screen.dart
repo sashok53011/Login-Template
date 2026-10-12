@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -153,18 +154,49 @@ class _ApiKeyDialog extends StatefulWidget {
 
 class _ApiKeyDialogState extends State<_ApiKeyDialog> {
   late final TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
   bool _obscure = true;
+  bool _focused = false;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.provider.apiKey ?? '');
+    _focusNode.addListener(_onFocusChanged);
+  }
+
+  /// The paste button only wakes up once the field is being edited, so a key
+  /// cannot be dropped in by accident.
+  void _onFocusChanged() {
+    if (_focusNode.hasFocus != _focused) {
+      setState(() => _focused = _focusNode.hasFocus);
+    }
   }
 
   @override
   void dispose() {
+    _focusNode.removeListener(_onFocusChanged);
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim() ?? '';
+
+    if (!mounted) return;
+
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('В буфере обмена нет текста')),
+      );
+      return;
+    }
+
+    _controller.text = text;
+    _controller.selection = TextSelection.collapsed(offset: text.length);
+    setState(() {});
   }
 
   @override
@@ -187,12 +219,14 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _controller,
+              focusNode: _focusNode,
               obscureText: _obscure,
-              autofocus: true,
               decoration: InputDecoration(
                 labelText: 'API Key',
                 helperText: 'Хранится только на этом устройстве',
+                border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
+                  tooltip: _obscure ? 'Показать' : 'Скрыть',
                   icon: Icon(
                     _obscure ? Icons.visibility : Icons.visibility_off,
                   ),
@@ -200,9 +234,32 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
+            Row(
+              children: <Widget>[
+                TextButton.icon(
+                  onPressed: _focused ? _pasteFromClipboard : null,
+                  icon: const Icon(Icons.content_paste),
+                  label: const Text('Вставить из буфера'),
+                ),
+                TextButton.icon(
+                  onPressed: _controller.text.isEmpty
+                      ? null
+                      : () {
+                          setState(() {
+                            _controller.clear();
+                          });
+                        },
+                  icon: const Icon(Icons.clear),
+                  label: const Text('Очистить'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
             Text(
-              'Сам провайдер и его адрес задаются администратором.',
+              'Сам провайдер и его адрес задаются администратором. '
+              'Ключ можно получить по ссылке «Получить API-ключ» и вставить '
+              'сюда.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -401,6 +458,8 @@ class _ProviderCard extends StatelessWidget {
               value: provider.apiKey?.isNotEmpty == true
                   ? '••••••••'
                   : '(не задан)',
+              trailing: provider.apiKey?.isNotEmpty == true ? null : 'ввести',
+              onTap: onEditKey,
             ),
             if (provider.isDead)
               Padding(
@@ -478,7 +537,12 @@ String? _statsLabel(ModelStats? stats) {
 }
 
 class _InfoLine extends StatelessWidget {
-  const _InfoLine({required this.label, required this.value, this.trailing});
+  const _InfoLine({
+    required this.label,
+    required this.value,
+    this.trailing,
+    this.onTap,
+  });
 
   final String label;
   final String value;
@@ -486,11 +550,14 @@ class _InfoLine extends StatelessWidget {
   /// Optional muted suffix, e.g. the usage counters of a model.
   final String? trailing;
 
+  /// Makes the whole row tappable, used for the API key line.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -531,6 +598,9 @@ class _InfoLine extends StatelessWidget {
         ],
       ),
     );
+
+    if (onTap == null) return row;
+    return InkWell(onTap: onTap, child: row);
   }
 }
 

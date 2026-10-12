@@ -206,6 +206,10 @@ The same list is in a browser at `https://app.devhorizon.online/ai-providers/`
 administrator ticks “Вход администратора (superuser)” to manage the catalogue;
 a regular account only gets the switches.
 
+Tapping the **API Key** line opens the key dialog, which has a
+**«Вставить из буфера»** button — it becomes active only once the field is
+focused.
+
 On every sync only the entries a user switched **off** are reconciled:
 
 | Situation | What happens |
