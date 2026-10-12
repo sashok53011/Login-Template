@@ -209,6 +209,14 @@ Die Anbieterdefinitionen liegen in einem gemeinsamen Katalog auf dem Server
 | `admin` | einem PocketBase-Superuser | alle |
 | `user` | einem normalen Benutzer | den Autor und den Superuser, bis ein Administrator ihn veröffentlicht |
 
+Der Katalog enthält **29 Anbieter**: OpenAI, Anthropic, Google Gemini, Groq,
+OpenRouter, Ollama, LM Studio, Mistral, Together AI, Fireworks AI, DeepSeek,
+xAI (Grok), Cerebras, SambaNova, Hyperbolic, Nebius, Novita, DeepInfra,
+NVIDIA NIM, Cohere, Z.AI (GLM), Moonshot (Kimi), Alibaba Qwen, Upstage,
+Hugging Face sowie die lokalen Laufzeiten vLLM, llama.cpp, Jan und GPT4All.
+Aufgenommen wurde nur, was geantwortet hat — jede `/models`-URL wurde vorher
+geprüft.
+
 Ein normaler Benutzer **darf** einen eigenen Anbieter hinzufügen. Er wird dem
 Administrator samt Autorennamen und allen Daten außer Geheimnissen gemeldet und
 bleibt für andere unsichtbar, bis ein Administrator ihn auf `admin` umstellt —

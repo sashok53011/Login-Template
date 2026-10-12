@@ -203,6 +203,13 @@ API-ключ не покидает устройство: сервис синхр
 | `admin` | superuser PocketBase | все |
 | `user` | обычный пользователь | автор и superuser, пока администратор не опубликует |
 
+В каталоге сразу **29 провайдеров**: OpenAI, Anthropic, Google Gemini, Groq,
+OpenRouter, Ollama, LM Studio, Mistral, Together AI, Fireworks AI, DeepSeek,
+xAI (Grok), Cerebras, SambaNova, Hyperbolic, Nebius, Novita, DeepInfra,
+NVIDIA NIM, Cohere, Z.AI (GLM), Moonshot (Kimi), Alibaba Qwen, Upstage,
+Hugging Face и локальные vLLM, llama.cpp, Jan, GPT4All.
+Добавлены только те, что ответили: каждый адрес `/models` сначала проверялся.
+
 Обычный пользователь **может** добавить своего провайдера. Он попадает к
 администратору вместе с именем автора и всеми данными, кроме секретов, и
 остаётся невидимым для остальных, пока администратор не переведёт его в

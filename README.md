@@ -204,6 +204,13 @@ Provider definitions live in one shared catalogue on the server
 | `admin` | a PocketBase superuser | everybody |
 | `user` | a regular user | its author and the superuser, until an administrator publishes it |
 
+The catalogue ships with **29 providers**: OpenAI, Anthropic, Google Gemini,
+Groq, OpenRouter, Ollama, LM Studio, Mistral, Together AI, Fireworks AI,
+DeepSeek, xAI (Grok), Cerebras, SambaNova, Hyperbolic, Nebius, Novita,
+DeepInfra, NVIDIA NIM, Cohere, Z.AI (GLM), Moonshot (Kimi), Alibaba Qwen,
+Upstage, Hugging Face, and the local runtimes vLLM, llama.cpp, Jan and GPT4All.
+Only endpoints that answered were added: every `/models` URL was checked first.
+
 A regular user **can** add a provider of their own. It is reported to the
 administrator together with the author's name and all of its data except
 secrets, and it stays invisible to other users until an administrator switches
