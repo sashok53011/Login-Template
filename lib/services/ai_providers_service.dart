@@ -73,6 +73,11 @@ class AiProvidersService {
       final apiKey = changes.remove('api_key');
       final nonSecretChanges = Map<String, dynamic>.from(changes);
       nonSecretChanges.remove('apiKey');
+      // PocketBase stores the owner in the `user` relation, not `userId`.
+      nonSecretChanges.remove('userId');
+      if (userId != null && !nonSecretChanges.containsKey('user')) {
+        nonSecretChanges['user'] = userId;
+      }
       final response = await _api.dio.patch(
         '/api/collections/$_collection/records/$id',
         data: nonSecretChanges.isEmpty && apiKey == null ? <String, dynamic>{} : nonSecretChanges,

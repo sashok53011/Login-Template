@@ -18,6 +18,9 @@
 - Выход из аккаунта с подтверждением
 - Splash-экран, пока восстанавливается сессия
 - Задел под Google OAuth (метод `signInWithGoogle()` в `auth_service.dart`)
+- **AI Providers list** (после входа): вкл/выкл, редактирование URL / model /
+  API-ключа / fallback priority, логотипы провайдеров, ссылки на страницу
+  логина и получения ключа, add / edit / delete
 
 ## Стек
 
@@ -26,8 +29,10 @@
 | `dio` | HTTP-клиент для REST API |
 | `flutter_riverpod` | управление состоянием |
 | `go_router` | навигация + маршрутизация по статусу авторизации |
-| `flutter_secure_storage` | безопасное хранение токена |
+| `flutter_secure_storage` | безопасное хранение токена и API-ключей провайдеров |
 | `equatable` | сравнение моделей |
+| `url_launcher` | открытие страниц логина / получения ключа |
+| `flutter_svg` | логотипы провайдеров из `assets/logos` |
 
 ## Структура
 
@@ -38,15 +43,19 @@ lib/
 │   └── constants.dart       # ключи хранилища
 ├── models/
 │   ├── action_result.dart   # результат последней попытки входа/регистрации
+│   ├── ai_provider.dart     # конфигурация AI-провайдера
 │   └── user.dart            # модель пользователя + displayName
 ├── providers/
 │   ├── action_result_provider.dart
+│   ├── ai_providers_provider.dart # провайдеры + список популярных
 │   └── auth_provider.dart   # AuthNotifier + провайдеры Riverpod
 ├── services/
+│   ├── ai_providers_service.dart  # CRUD коллекции ai_providers
 │   ├── api_client.dart      # Dio + авторизационный заголовок
 │   ├── auth_service.dart    # register / login / logout / проверка доступности
 │   └── secure_storage_service.dart
 ├── screens/
+│   ├── ai_providers_list_screen.dart
 │   ├── splash_screen.dart
 │   ├── login_screen.dart
 │   ├── register_screen.dart
@@ -55,6 +64,9 @@ lib/
 ├── utils/
 │   └── validators.dart      # валидация полей форм
 └── main.dart                # MaterialApp.router + редиректы
+
+assets/
+└── logos/                   # логотипы провайдеров (SVG)
 ```
 
 ## Бэкенд
@@ -135,6 +147,49 @@ GET /api/collections/users/records?k=pb_av_1&q=someone@mail.ru
 срабатывающий во время запроса, его не теряет. Ошибка **пушится** в стек —
 нажатие «Назад» возвращает к заполненной форме.
 
+## AI Providers list
+
+Доступен с главного экрана (`AI-провайдеры` → `/ai-providers`). По карточке на
+провайдера, сортировка по `fallbackPriority`. В карточке:
+
+- переключатель вкл/выкл
+- `URL`, `Model`, `API Key` (маской) и `Fallback priority`
+- ссылки на страницу логина провайдера и на страницу получения ключа (`url_launcher`)
+- `Редактировать` / `Удалить` (удаление с подтверждением)
+- логотип: `logoUrl` → `logoAsset` (`assets/logos/<имя>.svg`) → запасная иконка
+
+Новый провайдер добавляется кнопкой `Добавить провайдера`. При первом заходе
+список наполняется популярными (OpenAI, Anthropic, Google Gemini, Groq,
+OpenRouter, Ollama, LM Studio, Mistral, Together, Fireworks).
+
+### Хранение: конфиг на сервере, секреты на устройстве
+
+| Что | Где |
+|---|---|
+| name, enabled, url, model, fallbackPriority, ссылки, логотип | Коллекция PocketBase `ai_providers` |
+| API-ключ | `flutter_secure_storage`, ключ `ai_provider_<userId>_<providerId>` |
+
+API-ключ не покидает устройство: `AiProvidersService` вырезает `api_key` из
+любого запроса и читает ключ обратно из secure storage. Поэтому ключа нет ни в
+базе, ни в бэкапах, ни в логах сервера.
+
+### API Rules коллекции `ai_providers`
+
+| Правило | Значение |
+|---|---|
+| List/Search | `@request.auth.id != '' && user = @request.auth.id` |
+| View | `@request.auth.id != '' && user = @request.auth.id` |
+| Create | `@request.auth.id != ''` |
+| Update | `@request.auth.id != '' && user = @request.auth.id` |
+| Delete | `@request.auth.id != '' && user = @request.auth.id` |
+
+Поля: `user` (relation → `users`, required), `name` (text, required),
+`enabled` (bool), `url` (url, required), `model` (text, required),
+`fallbackPriority` (number, min 0), `loginUrl`, `getApiKeyUrl`, `logoUrl` (url),
+`logoAsset` (text), `isPredefined` (bool).
+
+> Поле `api_key` на сервере **не нужно** — ключ хранится только на устройстве.
+
 ## Сборка
 
 ```bash
@@ -144,6 +199,34 @@ flutter build apk --release   # релизный APK (нужен keystore)
 ```
 
 APK появится в `build/app/outputs/flutter-apk/`.
+
+### Windows: кэш pub на другом диске
+
+Если проект и кэш pub лежат на разных дисках Windows (например, проект на `E:`,
+кэш на `C:`), инкрементальный компилятор Kotlin падает с ошибкой
+`this and base files have different roots`. Это уже учтено в
+`android/gradle.properties`:
+
+```properties
+kotlin.incremental=false
+kotlin.incremental.useClasspathSnapshot=false
+```
+
+## Тесты
+
+```bash
+flutter test
+```
+
+Покрыты модели, экран результата, полный цикл регистрация / вход / выход и
+поток AI-провайдеров (add, edit, toggle, delete и гарантия «API-ключ не уходит
+на сервер»).
+
+Проверка доступности на живом сервере — по флагу:
+
+```bash
+flutter test test\availability_integration_test.dart --dart-define=PB_LIVE=true
+```
 
 ## Точка расширения под соцсети
 

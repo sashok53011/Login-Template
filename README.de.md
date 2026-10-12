@@ -19,6 +19,9 @@ Anmeldung.
 - Abmelden mit Bestätigung
 - Splash-Bildschirm, während die Sitzung wiederhergestellt wird
 - Ansatz für Google OAuth (`signInWithGoogle()` in `auth_service.dart`)
+- **AI Providers list** (nach der Anmeldung): Ein-/Ausschalten, bearbeitbare
+  URL / Model / API-Key / Fallback-Priorität, Anbieter-Logos, Links zu
+  Login- und API-Key-Seite, Add / Edit / Delete
 
 ## Stack
 
@@ -27,8 +30,10 @@ Anmeldung.
 | `dio` | HTTP-Client für die REST-API |
 | `flutter_riverpod` | Zustandsverwaltung |
 | `go_router` | Navigation + Routing nach Anmeldestatus |
-| `flutter_secure_storage` | Sichere Speicherung des Tokens |
+| `flutter_secure_storage` | Sichere Speicherung von Token und API-Keys |
 | `equatable` | Vergleich von Modellen |
+| `url_launcher` | Öffnen von Login- / API-Key-Seiten |
+| `flutter_svg` | Anbieter-Logos aus `assets/logos` |
 
 ## Struktur
 
@@ -39,15 +44,19 @@ lib/
 │   └── constants.dart       # Speicherschlüssel
 ├── models/
 │   ├── action_result.dart   # Ergebnis der letzten Registrierungs-/Anmeldeversuche
+│   ├── ai_provider.dart     # Konfiguration eines AI-Anbieters
 │   └── user.dart            # Benutzermodell + displayName
 ├── providers/
 │   ├── action_result_provider.dart
+│   ├── ai_providers_provider.dart # Anbieter + Liste der beliebten Anbieter
 │   └── auth_provider.dart   # AuthNotifier + Riverpod-Provider
 ├── services/
+│   ├── ai_providers_service.dart  # CRUD für die Collection ai_providers
 │   ├── api_client.dart      # Dio + Auth-Header
 │   ├── auth_service.dart    # register / login / logout / Verfügbarkeit
 │   └── secure_storage_service.dart
 ├── screens/
+│   ├── ai_providers_list_screen.dart
 │   ├── splash_screen.dart
 │   ├── login_screen.dart
 │   ├── register_screen.dart
@@ -56,6 +65,9 @@ lib/
 ├── utils/
 │   └── validators.dart      # Validierung der Formularfelder
 └── main.dart                # MaterialApp.router + Umleitungen
+
+assets/
+└── logos/                   # Anbieter-Logos (SVG)
 ```
 
 ## Backend
@@ -139,6 +151,50 @@ Das Ergebnis wird über `actionResultProvider` weitergegeben, sodass ein
 Umleiten während der Anfrage es nicht verlieren kann. Fehler werden auf den
 Stapel *gepushd* — „Zurück" kehrt zum ausgefüllten Formular zurück.
 
+## AI Providers list
+
+Erreichbar vom Startbildschirm (`AI-провайдеры` → `/ai-providers`). Eine Karte
+pro Anbieter, sortiert nach `fallbackPriority`. Jede Karte bietet:
+
+- einen Ein-/Aus-Schalter
+- `URL`, `Model`, `API Key` (maskiert) und `Fallback priority`
+- Links zur Login-Seite und zur API-Key-Seite des Anbieters (`url_launcher`)
+- `Редактировать` / `Удалить` (Löschen mit Bestätigung)
+- ein Logo: `logoUrl` → `logoAsset` (`assets/logos/<name>.svg`) → generisches Icon
+
+Neue Anbieter kommen über `Добавить провайдера` hinzu. Beim ersten Aufruf wird
+die Liste mit beliebten Anbietern gefüllt (OpenAI, Anthropic, Google Gemini,
+Groq, OpenRouter, Ollama, LM Studio, Mistral, Together, Fireworks).
+
+### Speicherung: Konfiguration auf dem Server, Secrets auf dem Gerät
+
+| Was | Wo |
+|---|---|
+| name, enabled, url, model, fallbackPriority, Links, Logo | PocketBase-Collection `ai_providers` |
+| API-Key | `flutter_secure_storage`, Schlüssel `ai_provider_<userId>_<providerId>` |
+
+Der API-Key verlässt das Gerät nie: `AiProvidersService` entfernt `api_key` aus
+jeder Anfrage und liest ihn aus dem Secure Storage zurück. Der Key liegt also
+weder in der Datenbank noch in Backups oder Server-Logs.
+
+### API Rules für die Collection `ai_providers`
+
+| Regel | Wert |
+|---|---|
+| List/Search | `@request.auth.id != '' && user = @request.auth.id` |
+| View | `@request.auth.id != '' && user = @request.auth.id` |
+| Create | `@request.auth.id != ''` |
+| Update | `@request.auth.id != '' && user = @request.auth.id` |
+| Delete | `@request.auth.id != '' && user = @request.auth.id` |
+
+Felder: `user` (Relation → `users`, required), `name` (text, required),
+`enabled` (bool), `url` (url, required), `model` (text, required),
+`fallbackPriority` (number, min 0), `loginUrl`, `getApiKeyUrl`, `logoUrl` (url),
+`logoAsset` (text), `isPredefined` (bool).
+
+> Ein Feld `api_key` wird auf dem Server **nicht** benötigt — der Key liegt nur
+> auf dem Gerät.
+
 ## Kompilieren
 
 ```bash
@@ -148,6 +204,34 @@ flutter build apk --release   # Release-APK (Benutzerkey erforderlich)
 ```
 
 Die APK landet in `build/app/outputs/flutter-apk/`.
+
+### Windows: pub-Cache auf einem anderen Laufwerk
+
+Wenn Projekt und pub-Cache auf verschiedenen Windows-Laufwerken liegen (Projekt
+auf `E:`, Cache auf `C:`), scheitert der inkrementelle Kotlin-Compiler mit
+`this and base files have different roots`. Das ist bereits in
+`android/gradle.properties` berücksichtigt:
+
+```properties
+kotlin.incremental=false
+kotlin.incremental.useClasspathSnapshot=false
+```
+
+## Tests
+
+```bash
+flutter test
+```
+
+Abgedeckt sind die Modelle, der Ergebnisbildschirm, der komplette Ablauf
+Registrierung / Anmeldung / Abmelden sowie der AI-Provider-Ablauf (Add, Edit,
+Toggle, Delete und die Garantie „der API-Key erreicht den Server nie").
+
+Die Verfügbarkeitsprüfung gegen den echten Server ist optional:
+
+```bash
+flutter test test\availability_integration_test.dart --dart-define=PB_LIVE=true
+```
 
 ## Erweiterungspunkt für soziale Anmeldung
 

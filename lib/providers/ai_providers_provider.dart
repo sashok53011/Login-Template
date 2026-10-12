@@ -2,17 +2,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/ai_provider.dart';
 import '../services/ai_providers_service.dart';
-import '../services/secure_storage_service.dart';
 import 'auth_provider.dart';
 
-final secureStorageServiceProvider = Provider<SecureStorageService>((ref) {
-  return SecureStorageService();
-});
-
+// The secure storage instance is shared with the auth layer so that a single
+// override in tests (and a single keystore on device) serves both.
 final aiProvidersServiceProvider = Provider<AiProvidersService>((ref) {
   return AiProvidersService(
     ref.watch(apiClientProvider),
-    ref.watch(secureStorageServiceProvider),
+    ref.watch(secureStorageProvider),
   );
 });
 
