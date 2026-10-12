@@ -274,6 +274,14 @@ flutter build apk --release   # релизный APK (нужен keystore)
 
 APK появится в `build/app/outputs/flutter-apk/`.
 
+> **Release-сборке нужно разрешение INTERNET.** Flutter держит
+> `android.permission.INTERNET` только в
+> `android/app/src/debug/AndroidManifest.xml` (для hot reload), поэтому
+> release-APK вообще не имеет доступа к сети, пока разрешение не объявлено в
+> `android/app/src/main/AndroidManifest.xml`. Без него любой запрос падает с
+> `SocketException: Failed host lookup ... errno = 7` — выглядит как проблема
+> с DNS, но это не она.
+
 ### Windows: кэш pub на другом диске
 
 Если проект и кэш pub лежат на разных дисках Windows (например, проект на `E:`,

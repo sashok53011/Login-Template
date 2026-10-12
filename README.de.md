@@ -286,6 +286,14 @@ flutter build apk --release   # Release-APK (Benutzerkey erforderlich)
 
 Die APK landet in `build/app/outputs/flutter-apk/`.
 
+> **Release-Builds brauchen die INTERNET-Berechtigung.** Flutter hält
+> `android.permission.INTERNET` nur in
+> `android/app/src/debug/AndroidManifest.xml` (für Hot Reload), deshalb hat eine
+> Release-APK überhaupt keinen Netzzugriff, solange sie nicht in
+> `android/app/src/main/AndroidManifest.xml` steht. Ohne sie schlägt jede
+> Anfrage mit `SocketException: Failed host lookup ... errno = 7` fehl — das
+> sieht nach einem DNS-Problem aus, ist aber keines.
+
 ### Windows: pub-Cache auf einem anderen Laufwerk
 
 Wenn Projekt und pub-Cache auf verschiedenen Windows-Laufwerken liegen (Projekt

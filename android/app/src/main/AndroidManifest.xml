@@ -1,4 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The app talks to the self-hosted PocketBase over HTTPS, and the AI
+         provider test calls the providers directly. The release variant does
+         NOT inherit the debug manifest, where Flutter keeps this permission
+         for hot reload, so it has to be declared here. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
     <application
         android:label="login_app"
         android:name="${applicationName}"

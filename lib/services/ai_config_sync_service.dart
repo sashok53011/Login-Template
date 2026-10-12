@@ -4,12 +4,13 @@ import '../models/ai_config.dart';
 import '../models/ai_provider.dart';
 import 'api_client.dart';
 
-/// Talks to the PocketBase hook that keeps one JSON config file per user.
+/// Reads and writes the shared provider catalogue kept by the server.
 ///
-///   GET /api/ai-config   -> AiConfig
-///   PUT /api/ai-config   -> AiConfig (what the server stored)
+///   GET /api/ai-config   -> the catalogue (plus this user's flags)
+///   PUT /api/ai-config   -> stores the flags, and for a regular user creates
+///                           the entries that are new as their own proposals
 ///
-/// The same file backs the web page at
+/// The same data backs the web page at
 /// https://app.devhorizon.online/ai-providers/, so both sides see one list.
 /// API keys are never part of the payload.
 class AiConfigSyncService {
@@ -55,6 +56,8 @@ class AiConfigSyncService {
       case DioExceptionType.receiveTimeout:
       case DioExceptionType.connectionError:
         return 'Нет связи с сервером. Проверьте интернет-соединение.';
+      case DioExceptionType.badCertificate:
+        return 'Проблема с сертификатом сервера.';
       case DioExceptionType.cancel:
         return 'Запрос был отменён.';
       default:
