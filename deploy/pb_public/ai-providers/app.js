@@ -15,9 +15,12 @@ const state = {
   token: localStorage.getItem(TOKEN_KEY) || null,
   user: safeParse(localStorage.getItem(USER_KEY)),
   config: null,
+  stats: {},
   canEdit: false,
   editingId: null,
 };
+
+let pollTimer = null;
 
 const el = {
   authView: document.getElementById("auth-view"),
@@ -185,12 +188,108 @@ async function doRegister(email, name, password, passwordConfirm) {
 }
 
 function doLogout() {
+  stopPolling();
   state.token = null;
   state.user = null;
   state.config = null;
+  state.stats = {};
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   render();
+}
+
+/* ---------------------------------------------------------------- stats */
+
+/// The counters are refreshed on a timer, which is what makes the numbers
+/// move "in real time" as other people run their tests.
+function startPolling() {
+  stopPolling();
+  pollTimer = window.setInterval(refreshStats, 8000);
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    window.clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+async function refreshStats() {
+  try {
+    const stats = await api("/api/ai-stats");
+    state.stats = stats && typeof stats === "object" ? stats : {};
+    if (state.token) {
+      renderProviders();
+    }
+  } catch (err) {
+    // Statistics are secondary: never disturb the page over them.
+  }
+}
+
+function formatStats(model) {
+  const users =
+    model.usersFail > 0
+      ? model.usersOk + " (" + model.usersFail + ")"
+      : String(model.usersOk);
+  const when = model.last ? shortTime(model.last) : "";
+  return when ? users + " · " + when : users;
+}
+
+function shortTime(value) {
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return "";
+  const two = function (n) {
+    return String(n).padStart(2, "0");
+  };
+  return (
+    two(date.getDate()) +
+    "." +
+    two(date.getMonth() + 1) +
+    " " +
+    two(date.getHours()) +
+    ":" +
+    two(date.getMinutes())
+  );
+}
+
+/// Lists every model of the provider that has counters, with the configured
+/// one highlighted.
+function statsBlock(provider) {
+  const providerStats = state.stats[provider.id];
+  if (!providerStats || !providerStats.models) return null;
+
+  const names = Object.keys(providerStats.models);
+  if (!names.length) return null;
+  names.sort();
+
+  const wrap = document.createElement("div");
+  wrap.className = "stats";
+
+  const title = document.createElement("div");
+  title.className = "stats-title";
+  title.textContent = "Статистика проверок";
+  wrap.appendChild(title);
+
+  names.forEach(function (name) {
+    const model = providerStats.models[name];
+
+    const row = document.createElement("div");
+    row.className = "stats-row";
+
+    const label = document.createElement("span");
+    label.className = name === provider.model ? "stats-current" : "";
+    label.textContent = name;
+
+    const value = document.createElement("span");
+    value.className = "stats-value" + (model.fail > 0 ? " stats-has-fail" : "");
+    value.textContent = formatStats(model);
+
+    row.appendChild(label);
+    row.appendChild(value);
+    wrap.appendChild(row);
+  });
+
+  return wrap;
 }
 
 /* --------------------------------------------------------------- config */
@@ -270,11 +369,13 @@ function renderProviders() {
     ? "Вы вошли как <strong>администратор</strong>: здесь задаётся каталог " +
       "провайдеров для всех пользователей. Помеченные «не работает» " +
       "убираются из списков пользователей. <strong>API-ключи</strong> здесь " +
-      "не хранятся — их вводят в приложении."
+      "не хранятся — их вводят в приложении. Статистика проверок " +
+      "обновляется автоматически."
     : "Каталог провайдеров ведёт администратор. Здесь можно " +
       "<strong>включить</strong> нужных провайдеров — они появятся в " +
       "Android-приложении. <strong>API-ключи</strong> на сервере не " +
-      "хранятся: их вводят только в приложении, они остаются на устройстве.";
+      "хранятся: их вводят только в приложении, они остаются на устройстве. " +
+      "Статистика проверок обновляется автоматически.";
 
   list.forEach(function (provider) {
     el.providers.appendChild(providerCard(provider));
@@ -302,8 +403,27 @@ function providerCard(provider) {
   const dl = document.createElement("dl");
   addRow(dl, "URL", provider.url);
   addRow(dl, "Model", provider.model);
+
+  const modelStats = statsOf(provider);
+  if (modelStats) {
+    const dd = dl.querySelector("dd:last-of-type");
+    if (dd) {
+      const badge = document.createElement("span");
+      badge.className =
+        "stats-value" + (modelStats.fail > 0 ? " stats-has-fail" : "");
+      badge.textContent = formatStats(modelStats);
+      dd.appendChild(document.createTextNode(" "));
+      dd.appendChild(badge);
+    }
+  }
+
   addRow(dl, "Приоритет", String(provider.fallbackPriority));
   body.appendChild(dl);
+
+  const block = statsBlock(provider);
+  if (block) {
+    body.appendChild(block);
+  }
 
   const links = document.createElement("div");
   links.className = "links";
@@ -367,6 +487,13 @@ function addRow(dl, label, value) {
   dd.textContent = value;
   dl.appendChild(dt);
   dl.appendChild(dd);
+}
+
+/// Counters of the provider's configured model, if any.
+function statsOf(provider) {
+  const providerStats = state.stats[provider.id];
+  if (!providerStats || !providerStats.models) return null;
+  return providerStats.models[provider.model] || null;
 }
 
 function extLink(href, label) {
@@ -523,6 +650,8 @@ async function refresh() {
     setError("");
     // render() also refreshes the toolbar: canEdit arrives with the config.
     render();
+    await refreshStats();
+    startPolling();
   } catch (err) {
     if (err.status === 401) {
       doLogout();

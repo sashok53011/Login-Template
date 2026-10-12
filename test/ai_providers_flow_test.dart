@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:login_app/main.dart';
+import 'package:login_app/providers/ai_providers_provider.dart';
 import 'package:login_app/providers/auth_provider.dart';
 import 'package:login_app/services/api_client.dart';
+import 'package:login_app/services/provider_test_service.dart';
 import 'package:login_app/services/secure_storage_service.dart';
 
 /// In-memory replacement for flutter_secure_storage (no platform channel
@@ -96,7 +98,13 @@ class FakeAiBackend implements HttpClientAdapter {
 
   Map<String, dynamic> catalogue;
   final List<Map<String, dynamic>> putBodies = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> statsPosts = <Map<String, dynamic>>[];
+  Map<String, dynamic> statsView = <String, dynamic>{};
   final List<String> calls = <String>[];
+
+  /// Answers the provider's own /models endpoint for the test button.
+  String providerModelsBody = '{"data":[{"id":"openai-model"}]}';
+  int providerModelsStatus = 200;
 
   static ResponseBody _json(int status, Object? body) {
     return ResponseBody.fromString(
@@ -152,6 +160,37 @@ class FakeAiBackend implements HttpClientAdapter {
       if (method == 'PUT') {
         putBodies.add(body);
         return _json(200, _mergeFlags(body));
+      }
+    }
+
+    if (path == '/api/ai-stats') {
+      if (method == 'GET') {
+        return _json(200, statsView);
+      }
+      if (method == 'POST') {
+        statsPosts.add(body);
+        final providerId = body['providerId'] as String? ?? '';
+        final model = body['model'] as String? ?? '';
+        final ok = body['ok'] == true;
+        statsView = <String, dynamic>{
+          providerId: <String, dynamic>{
+            'version': 1,
+            'providerId': providerId,
+            'updated': '2026-10-12T21:00:00Z',
+            'models': <String, dynamic>{
+              model: <String, dynamic>{
+                'ok': ok ? 1 : 0,
+                'fail': ok ? 0 : 1,
+                'usersOk': ok ? 1 : 0,
+                'usersFail': ok ? 0 : 1,
+                'last': '2026-10-12T21:00:00Z',
+                'lastStatus': ok ? 'ok' : 'fail',
+                'lastError': body['error'] ?? '',
+              },
+            },
+          },
+        };
+        return _json(200, statsView[providerId]);
       }
     }
 
@@ -224,17 +263,55 @@ Map<String, dynamic> _catalogue(List<Map<String, dynamic>> providers) {
   };
 }
 
+/// Answers the provider's own API, i.e. the /models call behind the test
+/// button. Keeps the tests off the network.
+class FakeProviderAdapter implements HttpClientAdapter {
+  FakeProviderAdapter(this.backend);
+
+  final FakeAiBackend backend;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final status = backend.providerModelsStatus;
+    final body = status == 200
+        ? backend.providerModelsBody
+        : jsonEncode(<String, dynamic>{
+            'error': <String, dynamic>{'message': 'invalid api key'},
+          });
+
+    return ResponseBody.fromString(
+      body,
+      status,
+      headers: <String, List<String>>{
+        Headers.contentTypeHeader: <String>[Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 Future<void> pumpApp(
   WidgetTester tester,
   FakeAiBackend backend,
   FakeStorage storage,
 ) async {
   final api = ApiClient()..dio.httpClientAdapter = backend;
+  final providerApi = ProviderTestService(
+    dio: Dio()..httpClientAdapter = FakeProviderAdapter(backend),
+  );
+
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
         apiClientProvider.overrideWithValue(api),
         secureStorageProvider.overrideWithValue(storage),
+        providerTestServiceProvider.overrideWithValue(providerApi),
       ],
       child: const LoginApp(),
     ),
@@ -435,5 +512,78 @@ void main() {
     );
 
     expect(storage.values['last_login_email'], 'user@example.com');
+  });
+
+  testWidgets('a provider marked dead cannot be tested',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[
+        _entry('openai', 'OpenAI', 1, status: 'dead', enabled: true),
+      ]),
+    );
+    final storage = FakeStorage()
+      ..apiKeys['${FakeAiBackend.userId}/openai'] = 'sk-test';
+
+    await openProviders(tester, backend, storage);
+
+    expect(
+      find.text('Проверка недоступна: провайдер помечен администратором.'),
+      findsOneWidget,
+    );
+
+    final button = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Проверить и список моделей'),
+    );
+    expect(button.onPressed, isNull);
+    expect(backend.statsPosts, isEmpty);
+  });
+
+  testWidgets('testing a provider publishes the result and lists the models',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[_entry('openai', 'OpenAI', 1)]),
+    );
+    final storage = FakeStorage()
+      ..apiKeys['${FakeAiBackend.userId}/openai'] = 'sk-test';
+
+    await openProviders(tester, backend, storage);
+
+    final button = find.widgetWithText(TextButton, 'Проверить и список моделей');
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(backend.statsPosts, hasLength(1));
+    expect(backend.statsPosts.first['providerId'], 'openai');
+    expect(backend.statsPosts.first['model'], 'openai-model');
+    expect(backend.statsPosts.first['ok'], true);
+
+    expect(find.text('Модели: OpenAI'), findsOneWidget);
+    expect(find.textContaining('Найдено моделей: 1'), findsOneWidget);
+  });
+
+  testWidgets('a rejected key is reported as a failure',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[_entry('openai', 'OpenAI', 1)]),
+    )..providerModelsStatus = 401;
+    final storage = FakeStorage()
+      ..apiKeys['${FakeAiBackend.userId}/openai'] = 'sk-bad';
+
+    await openProviders(tester, backend, storage);
+
+    final button = find.widgetWithText(TextButton, 'Проверить и список моделей');
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(backend.statsPosts, hasLength(1));
+    expect(backend.statsPosts.first['ok'], false);
+    expect(
+      backend.statsPosts.first['error'].toString(),
+      contains('Неверный API-ключ'),
+    );
   });
 }

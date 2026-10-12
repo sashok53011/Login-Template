@@ -233,6 +233,33 @@ Die **E-Mail** der letzten erfolgreichen Anmeldung wird gemerkt und
 vorausgefüllt; das Passwort speichert die App nicht — das übernimmt der
 Passwortmanager von Android über die Autofill-Hinweise.
 
+### Anbietertest und die gemeinsame Statistik
+
+Jede Anbieterkarte hat **Проверить и список моделей**. Der Aufruf holt mit dem
+eigenen Key die Modellliste des Anbieters (`/models`) — das ist zugleich die
+Prüfung des Keys — und zeigt die gelieferten Modelle. Nach dem Speichern eines
+neuen Keys läuft der Test sofort.
+
+Bei einem Anbieter, den der Administrator als `dead` markiert hat, ist der
+Knopf **deaktiviert**, und der Server nimmt einen solchen Bericht ebenfalls nicht
+an.
+
+Das Ergebnis geht sofort an `/api/ai-stats`, deshalb steht neben jedem Modell,
+wie viele Benutzer erfolgreich waren, wie viele Fehler hatten (in Klammern) und
+wann der letzte Bericht kam:
+
+```text
+gpt-4o-mini   5 (2) · 12.10 21:15
+```
+
+Als Erfolg zählt nur, wenn der Key akzeptiert wird **und** der Anbieter das
+konfigurierte Modell anbietet — so sieht man, welche Modelle sich nicht nutzen
+lassen. Die Webseite aktualisiert die Zahlen alle paar Sekunden, die App zeigt
+sie ebenfalls neben dem Modell.
+
+Sobald echte KI-Aufrufe in der App landen, gehören ihre „Anbieter + Modell"-
+Ergebnisse an denselben Endpunkt.
+
 ## Kompilieren
 
 ```bash
@@ -266,7 +293,7 @@ kotlin.incremental.useClasspathSnapshot=false
 | `create-ai-providers-migration.js` | Migration, die die Collection `ai_providers` erstellt |
 | `tighten-users-list-rule.js` | Migration, die das Leak bei leerem `q` in der `users`-List-Regel schließt |
 | `catalogue.json` | Startkatalog der Anbieter (10 Einträge, alle `active`) |
-| `pb_hooks/` | die `/api/ai-config`-Routen und ihr Logikmodul |
+| `pb_hooks/` | die Routen `/api/ai-config` und `/api/ai-stats` samt Logikmodulen |
 | `pb_public/ai-providers/` | die Webseite unter `/ai-providers/` |
 | `README.md` | Schritt-für-Schritt-Anleitung |
 

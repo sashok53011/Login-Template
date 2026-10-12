@@ -224,6 +224,31 @@ The **email** of the last successful sign-in is remembered and prefilled; the
 password is not stored by the app — Android's password manager fills it in
 through the autofill hints.
 
+### Provider test and the shared statistics
+
+Every provider card has **Проверить и список моделей**. It calls the provider's
+own `/models` endpoint with your key — which doubles as the API key check — and
+shows the models that came back. Saving a new key runs the test right away.
+
+The button is disabled, and the server refuses the report as well, for a
+provider the administrator marked as `dead`.
+
+The outcome is published immediately to `/api/ai-stats`, so next to every model
+you see how many users succeeded, how many ran into an error in brackets, and
+when the last report arrived:
+
+```text
+gpt-4o-mini   5 (2) · 12.10 21:15
+```
+
+A test counts as a success only when the key is accepted **and** the provider
+offers the configured model; that way the counters show which models people
+cannot actually use. The web page refreshes the numbers every few seconds, and
+the app shows them next to the model too.
+
+Once real AI calls are wired into the app, the same endpoint is where their
+provider + model outcomes belong.
+
 ## Build
 
 ```bash
@@ -257,7 +282,7 @@ kotlin.incremental.useClasspathSnapshot=false
 | `create-ai-providers-migration.js` | PocketBase migration that creates the `ai_providers` collection |
 | `tighten-users-list-rule.js` | PocketBase migration closing the empty-`q` leak in the `users` List rule |
 | `catalogue.json` | the initial provider catalogue (10 entries, all `active`) |
-| `pb_hooks/` | the `/api/ai-config` routes and their logic module |
+| `pb_hooks/` | the `/api/ai-config` and `/api/ai-stats` routes plus their logic modules |
 | `pb_public/ai-providers/` | the web page served at `/ai-providers/` |
 | `README.md` | step-by-step instructions |
 

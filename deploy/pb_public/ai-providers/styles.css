@@ -328,6 +328,42 @@ input[type="checkbox"] {
   gap: 8px;
 }
 
+.stats {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.stats-title {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  padding: 1px 0;
+}
+
+.stats-current {
+  font-weight: 700;
+}
+
+.stats-value {
+  color: var(--ok);
+  white-space: nowrap;
+}
+
+.stats-has-fail {
+  color: var(--danger);
+}
+
 .links {
   display: flex;
   gap: 12px;

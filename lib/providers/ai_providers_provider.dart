@@ -4,12 +4,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/ai_config.dart';
 import '../models/ai_provider.dart';
+import '../models/ai_stats.dart';
 import '../services/ai_config_sync_service.dart';
+import '../services/ai_stats_service.dart';
+import '../services/provider_test_service.dart';
 import '../services/secure_storage_service.dart';
 import 'auth_provider.dart';
 
 final aiConfigSyncServiceProvider = Provider<AiConfigSyncService>((ref) {
   return AiConfigSyncService(ref.watch(apiClientProvider));
+});
+
+final aiStatsServiceProvider = Provider<AiStatsService>((ref) {
+  return AiStatsService(ref.watch(apiClientProvider));
+});
+
+final providerTestServiceProvider = Provider<ProviderTestService>((ref) {
+  return ProviderTestService();
 });
 
 /// Where the list currently comes from.
@@ -28,6 +39,9 @@ class AiProvidersState {
     this.error,
     this.source = AiProvidersSource.catalogue,
     this.syncedAt,
+    this.stats = const <String, ProviderStats>{},
+    this.testing = const <String>{},
+    this.models = const <String, List<String>>{},
   });
 
   final List<AiProvider> items;
@@ -38,7 +52,19 @@ class AiProvidersState {
   /// When the catalogue was last changed on the server.
   final DateTime? syncedAt;
 
+  /// Test statistics per provider, keyed by provider id.
+  final Map<String, ProviderStats> stats;
+
+  /// Providers whose test is running right now.
+  final Set<String> testing;
+
+  /// Models discovered by the last test, keyed by provider id.
+  final Map<String, List<String>> models;
+
   bool get syncEnabled => source == AiProvidersSource.catalogue;
+
+  ModelStats? statsFor(AiProvider provider) =>
+      stats[provider.id]?.forModel(provider.model);
 
   AiProvidersState copyWith({
     List<AiProvider>? items,
@@ -47,6 +73,9 @@ class AiProvidersState {
     AiProvidersSource? source,
     DateTime? syncedAt,
     bool clearSyncedAt = false,
+    Map<String, ProviderStats>? stats,
+    Set<String>? testing,
+    Map<String, List<String>>? models,
   }) {
     return AiProvidersState(
       items: items ?? this.items,
@@ -54,6 +83,9 @@ class AiProvidersState {
       error: error,
       source: source ?? this.source,
       syncedAt: clearSyncedAt ? null : (syncedAt ?? this.syncedAt),
+      stats: stats ?? this.stats,
+      testing: testing ?? this.testing,
+      models: models ?? this.models,
     );
   }
 }
@@ -82,6 +114,8 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
   final Ref _ref;
 
   AiConfigSyncService get _sync => _ref.read(aiConfigSyncServiceProvider);
+  AiStatsService get _statsService => _ref.read(aiStatsServiceProvider);
+  ProviderTestService get _testService => _ref.read(providerTestServiceProvider);
   SecureStorageService get _storage => _ref.read(secureStorageProvider);
 
   String? get _userId => _ref.read(authProvider).user?.id;
@@ -126,9 +160,97 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
         syncedAt: view.updated,
       );
       await _saveSnapshot(userId, items);
+      await refreshStats();
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  /// Loads the test statistics of every catalogue provider.
+  ///
+  /// Statistics are secondary: a failure here must never break the screen.
+  Future<void> refreshStats() async {
+    if (_userId == null) return;
+    try {
+      final stats = await _statsService.fetchAll();
+      state = state.copyWith(stats: stats);
+    } catch (_) {
+      // ignored on purpose
+    }
+  }
+
+  /// Asks the provider for its model list and publishes the result.
+  ///
+  /// One request covers both the "fetch model list" button and the API key
+  /// check, and the outcome is recorded on the server right away so that the
+  /// counters and the last-message time stay current.
+  ///
+  /// A provider the administrator marked as `dead` is not tested at all — the
+  /// server rejects such a report as well.
+  Future<ProviderTestResult?> testProvider(String id) async {
+    final provider = _find(id);
+    if (provider == null) return null;
+
+    if (provider.isDead) {
+      state = state.copyWith(
+        error: 'Провайдер помечен администратором как неработающий.',
+      );
+      return null;
+    }
+
+    final apiKey = provider.apiKey ?? '';
+    if (apiKey.isEmpty) {
+      state = state.copyWith(error: 'Сначала введите API-ключ.');
+      return null;
+    }
+
+    state = state.copyWith(
+      testing: <String>{...state.testing, id},
+      error: null,
+    );
+
+    final result = await _testService.fetchModels(
+      provider: provider,
+      apiKey: apiKey,
+    );
+
+    // Success means: the key works *and* the provider offers the configured
+    // model. A key that works but does not serve the model is reported as a
+    // failure, so the administrator can see which models people cannot use.
+    final offers = result.offersModel(provider.model);
+    final ok = result.ok && offers;
+    final error = result.ok
+        ? (offers ? null : 'Модель ${provider.model} не предлагается')
+        : result.error;
+
+    try {
+      final stats = await _statsService.report(
+        providerId: id,
+        model: provider.model,
+        ok: ok,
+        error: error,
+      );
+      state = state.copyWith(
+        testing: state.testing.where((String t) => t != id).toSet(),
+        stats: <String, ProviderStats>{...state.stats, id: stats},
+        models: <String, List<String>>{...state.models, id: result.models},
+        error: ok ? null : error,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        testing: state.testing.where((String t) => t != id).toSet(),
+        error: e.toString(),
+      );
+    }
+
+    return result;
+  }
+
+  AiProvider? _find(String id) {
+    for (final provider in state.items) {
+      if (provider.id == id) return provider;
+    }
+    return null;
   }
 
   Future<void> refresh() => load();
@@ -207,6 +329,15 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
         .toList();
     state = state.copyWith(items: items);
     await _saveSnapshot(userId, items);
+
+    // A fresh key is tested right away, so the server statistics are updated
+    // immediately after new data is entered.
+    if (value.isNotEmpty) {
+      final provider = _find(id);
+      if (provider != null && !provider.isDead) {
+        await testProvider(id);
+      }
+    }
   }
 
   // ------------------------------------------------------------- internals

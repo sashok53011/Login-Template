@@ -5,8 +5,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/config.dart';
 import '../models/ai_provider.dart';
+import '../models/ai_stats.dart';
 import '../providers/ai_providers_provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/provider_test_service.dart';
 
 /// The provider catalogue comes from the server and is maintained by a
 /// PocketBase superuser. A regular user can only switch entries on and off and
@@ -80,10 +82,13 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
                             final provider = state.items[index];
                             return _ProviderCard(
                               provider: provider,
+                              testing: state.testing.contains(provider.id),
+                              stats: state.statsFor(provider),
                               onToggle: (v) => ref
                                   .read(aiProvidersProvider.notifier)
                                   .toggle(provider.id, v),
                               onEditKey: () => _showApiKeyDialog(provider),
+                              onTest: () => _runTest(provider),
                             );
                           },
                         ),
@@ -101,10 +106,34 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
     );
 
     if (saved == null) return;
+    // Saving a key also runs the test, which publishes the result.
     await ref.read(aiProvidersProvider.notifier).setApiKey(provider.id, saved);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('API-ключ сохранён на устройстве')),
+    );
+  }
+
+  /// Runs the provider test and shows either the model list or the reason it
+  /// failed.
+  Future<void> _runTest(AiProvider provider) async {
+    final result =
+        await ref.read(aiProvidersProvider.notifier).testProvider(provider.id);
+    if (!mounted || result == null) return;
+
+    if (!result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error ?? 'Проверка не удалась')),
+      );
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _ModelsDialog(
+        provider: provider,
+        result: result,
+      ),
     );
   }
 }
@@ -287,11 +316,21 @@ class _ProviderCard extends StatelessWidget {
     required this.provider,
     required this.onToggle,
     required this.onEditKey,
+    required this.onTest,
+    this.testing = false,
+    this.stats,
   });
 
   final AiProvider provider;
   final ValueChanged<bool> onToggle;
   final VoidCallback onEditKey;
+  final VoidCallback onTest;
+
+  /// True while this provider's test is running.
+  final bool testing;
+
+  /// Statistics of the provider's configured model.
+  final ModelStats? stats;
 
   @override
   Widget build(BuildContext context) {
@@ -352,13 +391,25 @@ class _ProviderCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             _InfoLine(label: 'URL', value: provider.url),
-            _InfoLine(label: 'Model', value: provider.model),
+            _InfoLine(
+              label: 'Model',
+              value: provider.model,
+              trailing: _statsLabel(stats),
+            ),
             _InfoLine(
               label: 'API Key',
               value: provider.apiKey?.isNotEmpty == true
                   ? '••••••••'
                   : '(не задан)',
             ),
+            if (provider.isDead)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Проверка недоступна: провайдер помечен администратором.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -381,6 +432,20 @@ class _ProviderCard extends StatelessWidget {
                   icon: const Icon(Icons.key),
                   label: const Text('Ввести ключ'),
                 ),
+                TextButton.icon(
+                  onPressed:
+                      provider.isDead || testing ? null : onTest,
+                  icon: testing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.check_circle_outline),
+                  label: Text(
+                    testing ? 'Проверяем…' : 'Проверить и список моделей',
+                  ),
+                ),
               ],
             ),
           ],
@@ -399,14 +464,32 @@ class _ProviderCard extends StatelessWidget {
   }
 }
 
+/// `5 (2) · 12.10 21:15` — users who succeeded, users with errors, last report.
+String? _statsLabel(ModelStats? stats) {
+  if (stats == null || !stats.hasData) return null;
+
+  String two(int n) => n.toString().padLeft(2, '0');
+  final at = stats.last;
+  final when = at == null
+      ? ''
+      : ' · ${two(at.day)}.${two(at.month)} ${two(at.hour)}:${two(at.minute)}';
+
+  return '${stats.usersLabel}$when';
+}
+
 class _InfoLine extends StatelessWidget {
-  const _InfoLine({required this.label, required this.value});
+  const _InfoLine({required this.label, required this.value, this.trailing});
 
   final String label;
   final String value;
 
+  /// Optional muted suffix, e.g. the usage counters of a model.
+  final String? trailing;
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -416,20 +499,122 @@ class _InfoLine extends StatelessWidget {
             width: 90,
             child: Text(
               label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyMedium,
-              overflow: TextOverflow.ellipsis,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Flexible(
+                  child: Text(
+                    value,
+                    style: theme.textTheme.bodyMedium,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (trailing != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: Text(
+                      trailing!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Shows the models the provider reported, with the usage counters collected
+/// from every user's tests.
+class _ModelsDialog extends ConsumerWidget {
+  const _ModelsDialog({required this.provider, required this.result});
+
+  final AiProvider provider;
+  final ProviderTestResult result;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final stats = ref.watch(aiProvidersProvider).stats[provider.id];
+
+    return AlertDialog(
+      title: Text('Модели: ${provider.name}'),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _InfoLine(label: 'Адрес', value: result.endpoint),
+              _InfoLine(
+                label: 'Настроена',
+                value: provider.model,
+                trailing: result.offersModel(provider.model)
+                    ? 'есть в списке'
+                    : 'НЕТ в списке',
+              ),
+              const Divider(height: 20),
+              Text(
+                'Найдено моделей: ${result.models.length}',
+                style: theme.textTheme.titleSmall,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Рядом — сколько пользователей проверили модель успешно, '
+                'в скобках — сколько с ошибкой, и время последнего отчёта.',
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 10),
+              ...result.models.map((String model) {
+                final modelStats = stats?.forModel(model);
+                final isConfigured = model == provider.model;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          model,
+                          style: TextStyle(
+                            fontWeight:
+                                isConfigured ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        _statsLabel(modelStats) ?? 'нет данных',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: modelStats == null
+                              ? theme.colorScheme.onSurfaceVariant
+                              : theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Закрыть'),
+        ),
+      ],
     );
   }
 }
