@@ -217,6 +217,27 @@ kotlin.incremental=false
 kotlin.incremental.useClasspathSnapshot=false
 ```
 
+## Deployment (eigener PocketBase)
+
+`deploy/` enthält alles, damit das Backend nicht mehr ausfällt:
+
+| Datei | Zweck |
+|---|---|
+| `install-pocketbase-service.sh` | installiert PocketBase als systemd-Dienst (`Restart=always`, Autostart beim Boot) |
+| `pocketbase.service` | Referenz-Unit für die manuelle Installation |
+| `create-ai-providers-migration.js` | Migration, die die Collection `ai_providers` erstellt |
+| `README.md` | Schritt-für-Schritt-Anleitung |
+
+```bash
+sudo ./deploy/install-pocketbase-service.sh
+cp deploy/create-ai-providers-migration.js \
+   ~/pocketbase/pb_migrations/1760313600_create_ai_providers.js
+sudo systemctl restart pocketbase
+```
+
+Ohne den Dienst lebt PocketBase nur so lange wie die SSH-Sitzung, die es
+gestartet hat — genau das machte die API zu einem 502.
+
 ## Tests
 
 ```bash

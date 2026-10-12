@@ -1,0 +1,30 @@
+# Reference copy of the systemd unit.
+#
+# `install-pocketbase-service.sh` generates and installs this file with the
+# right user and paths filled in. Keep this one only for manual installation:
+#
+#   sudo sed -e 's|@USER@|sashok5301|g' \
+#            -e 's|@DIR@|/home/sashok5301/pocketbase|g' \
+#            deploy/pocketbase.service > /etc/systemd/system/pocketbase.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pocketbase
+
+[Unit]
+Description=PocketBase
+Documentation=https://pocketbase.io/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@DIR@
+ExecStart=@DIR@/pocketbase serve --http=127.0.0.1:8090 --dir=@DIR@/pb_data
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

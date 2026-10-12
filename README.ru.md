@@ -212,6 +212,27 @@ kotlin.incremental=false
 kotlin.incremental.useClasspathSnapshot=false
 ```
 
+## Деплой (свой PocketBase)
+
+В `deploy/` лежит всё, чтобы бэкенд больше не падал:
+
+| Файл | Назначение |
+|---|---|
+| `install-pocketbase-service.sh` | ставит PocketBase как systemd-сервис (`Restart=always`, автозапуск при загрузке) |
+| `pocketbase.service` | эталонный юнит для ручной установки |
+| `create-ai-providers-migration.js` | миграция, создающая коллекцию `ai_providers` |
+| `README.md` | пошаговая инструкция |
+
+```bash
+sudo ./deploy/install-pocketbase-service.sh
+cp deploy/create-ai-providers-migration.js \
+   ~/pocketbase/pb_migrations/1760313600_create_ai_providers.js
+sudo systemctl restart pocketbase
+```
+
+Без сервиса PocketBase живёт ровно столько, сколько живёт запустившая его
+SSH-сессия — именно из-за этого API отдавал 502.
+
 ## Тесты
 
 ```bash
