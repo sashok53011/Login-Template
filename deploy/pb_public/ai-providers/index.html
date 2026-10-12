@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>AI Providers — app.devhorizon.online</title>
+    <link rel="stylesheet" href="styles.css?v=2" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">AI</span>
+          <div>
+            <h1>AI Providers list</h1>
+            <p class="muted" id="host-label">app.devhorizon.online</p>
+          </div>
+        </div>
+        <div class="topbar-actions" id="topbar-actions" hidden>
+          <span class="who" id="who"></span>
+          <button class="btn btn-ghost" id="logout-btn" type="button">
+            Выйти
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <!-- ---------------------------------------------------- auth view -->
+        <section id="auth-view" class="card auth-card" hidden>
+          <div class="tabs">
+            <button class="tab is-active" data-tab="login" type="button">
+              Вход
+            </button>
+            <button class="tab" data-tab="register" type="button">
+              Регистрация
+            </button>
+          </div>
+
+          <form id="login-form" class="form">
+            <label>
+              Email
+              <input
+                type="email"
+                name="identity"
+                autocomplete="username"
+                required
+              />
+            </label>
+            <label>
+              Пароль
+              <input
+                type="password"
+                name="password"
+                autocomplete="current-password"
+                required
+              />
+            </label>
+            <button class="btn btn-primary" type="submit">Войти</button>
+          </form>
+
+          <form id="register-form" class="form" hidden>
+            <label>
+              Email
+              <input type="email" name="email" autocomplete="email" required />
+            </label>
+            <label>
+              Имя пользователя
+              <input
+                type="text"
+                name="name"
+                autocomplete="nickname"
+                minlength="3"
+                required
+              />
+            </label>
+            <label>
+              Пароль
+              <input
+                type="password"
+                name="password"
+                autocomplete="new-password"
+                minlength="8"
+                required
+              />
+            </label>
+            <label>
+              Повтор пароля
+              <input
+                type="password"
+                name="passwordConfirm"
+                autocomplete="new-password"
+                minlength="8"
+                required
+              />
+            </label>
+            <button class="btn btn-primary" type="submit">
+              Зарегистрироваться
+            </button>
+          </form>
+
+          <p class="note" id="auth-note" hidden></p>
+        </section>
+
+        <!-- ----------------------------------------------- providers view -->
+        <section id="providers-view" hidden>
+          <div class="toolbar">
+            <button class="btn btn-primary" id="add-btn" type="button">
+              + Добавить провайдера
+            </button>
+            <button class="btn btn-ghost" id="reload-btn" type="button">
+              Обновить
+            </button>
+            <span class="spacer"></span>
+            <span class="muted" id="sync-status">—</span>
+          </div>
+
+          <p class="note">
+            Список общий с Android-приложением: то, что вы измените здесь,
+            появится в приложении после синхронизации. <strong>API-ключи</strong>
+            на сервере не хранятся — их нужно вводить только в приложении, они
+            остаются на устройстве.
+          </p>
+
+          <div id="providers" class="providers"></div>
+          <p class="empty" id="empty-note" hidden>
+            Список пуст. Нажмите «Добавить провайдера».
+          </p>
+        </section>
+
+        <p class="error" id="error-note" hidden></p>
+      </main>
+
+      <footer class="footer muted">
+        <span>app.devhorizon.online</span>
+        <span>·</span>
+        <a href="/_/">Панель администратора</a>
+      </footer>
+    </div>
+
+    <!-- ------------------------------------------------------ editor modal -->
+    <dialog id="editor">
+      <form id="editor-form" class="form">
+        <h2 id="editor-title">Провайдер</h2>
+
+        <label>
+          Название *
+          <input type="text" name="name" required />
+        </label>
+
+        <label class="row">
+          <span>Включён</span>
+          <input type="checkbox" name="enabled" />
+        </label>
+
+        <label>
+          URL *
+          <input type="url" name="url" placeholder="https://api.example.com/v1" required />
+        </label>
+
+        <label>
+          Model *
+          <input type="text" name="model" required />
+        </label>
+
+        <label>
+          Приоритет (fallback) *
+          <input type="number" name="fallbackPriority" min="0" step="1" value="0" required />
+        </label>
+
+        <label>
+          Страница логина (URL)
+          <input type="url" name="loginUrl" />
+        </label>
+
+        <label>
+          Получить API-ключ (URL)
+          <input type="url" name="getApiKeyUrl" />
+        </label>
+
+        <label>
+          Логотип: ссылка (logoUrl)
+          <input type="url" name="logoUrl" />
+        </label>
+
+        <label>
+          Логотип: готовый (logoAsset)
+          <select name="logoAsset">
+            <option value="">— не выбран —</option>
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="google-gemini">Google Gemini</option>
+            <option value="groq">Groq</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="ollama">Ollama</option>
+            <option value="lmstudio">LM Studio</option>
+            <option value="mistral">Mistral</option>
+            <option value="together">Together AI</option>
+            <option value="fireworks">Fireworks AI</option>
+          </select>
+        </label>
+
+        <div class="dialog-actions">
+          <button class="btn btn-ghost" type="button" id="editor-cancel">
+            Отмена
+          </button>
+          <button class="btn btn-primary" type="submit">Сохранить</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js?v=2"></script>
+  </body>
+</html>

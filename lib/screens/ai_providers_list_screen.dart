@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/config.dart';
 import '../models/ai_provider.dart';
 import '../providers/ai_providers_provider.dart';
 import '../providers/auth_provider.dart';
@@ -51,34 +52,46 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
         label: const Text('Добавить провайдера'),
       ),
       body: SafeArea(
-        child: state.isLoading && state.items.isEmpty
-            ? const Center(child: CircularProgressIndicator())
-            : state.items.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'Список пуст. Нажмите «Добавить провайдера» для добавления.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: state.items.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final provider = state.items[index];
-                      return _ProviderCard(
-                        provider: provider,
-                        onEdit: () => _showEditor(context, provider),
-                        onDelete: () => _confirmDelete(context, provider),
-                        onToggle: (v) => ref
-                            .read(aiProvidersProvider.notifier)
-                            .toggle(provider.id, v),
-                      );
-                    },
-                  ),
+        child: Column(
+          children: <Widget>[
+            _SyncCard(
+              state: state,
+              onToggle: (bool value) =>
+                  ref.read(aiProvidersProvider.notifier).setSyncEnabled(value),
+              onSyncNow: () => ref.read(aiProvidersProvider.notifier).syncNow(),
+            ),
+            Expanded(
+              child: state.isLoading && state.items.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : state.items.isEmpty
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text(
+                              'Список пуст. Нажмите «Добавить провайдера» для добавления.',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: state.items.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final provider = state.items[index];
+                            return _ProviderCard(
+                              provider: provider,
+                              onEdit: () => _showEditor(context, provider),
+                              onDelete: () => _confirmDelete(context, provider),
+                              onToggle: (v) => ref
+                                  .read(aiProvidersProvider.notifier)
+                                  .toggle(provider.id, v),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -123,6 +136,90 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
         SnackBar(content: Text('Ошибка: $e')),
       );
     }
+  }
+}
+
+/// Explains and controls where the list lives: the account's PocketBase
+/// collection, or the shared JSON file that also backs the web page at
+/// https://app.devhorizon.online/ai-providers/
+class _SyncCard extends StatelessWidget {
+  const _SyncCard({
+    required this.state,
+    required this.onToggle,
+    required this.onSyncNow,
+  });
+
+  final AiProvidersState state;
+  final ValueChanged<bool> onToggle;
+  final VoidCallback onSyncNow;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SwitchListTile(
+            value: state.syncEnabled,
+            onChanged: onToggle,
+            title: const Text('Синхронизация с сервером'),
+            subtitle: Text(_subtitle()),
+          ),
+          if (state.syncEnabled)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Список общий с веб-страницей app.devhorizon.online. '
+                    'API-ключи остаются на этом устройстве и на сервер не отправляются.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: <Widget>[
+                      TextButton.icon(
+                        onPressed: onSyncNow,
+                        icon: const Icon(Icons.sync),
+                        label: const Text('Синхронизировать сейчас'),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => launchUrl(
+                          Uri.parse('${AppConfig.baseUrl}/ai-providers/'),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('Веб-версия'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _subtitle() {
+    if (!state.syncEnabled) {
+      return 'Выключена. Список хранится в вашем аккаунте.';
+    }
+    final at = state.syncedAt;
+    if (at == null) {
+      return 'Включена. На сервере ещё нет сохранённой версии.';
+    }
+    return 'Включена. Обновлено: ${_formatTime(at)}';
+  }
+
+  String _formatTime(DateTime value) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(value.day)}.${two(value.month)}.${value.year} '
+        '${two(value.hour)}:${two(value.minute)}';
   }
 }
 

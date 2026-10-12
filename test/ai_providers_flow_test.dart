@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:login_app/main.dart';
+import 'package:login_app/providers/ai_providers_provider.dart';
 import 'package:login_app/providers/auth_provider.dart';
 import 'package:login_app/services/api_client.dart';
 import 'package:login_app/services/secure_storage_service.dart';
@@ -68,6 +69,21 @@ class FakeStorage extends SecureStorageService {
   }) async {
     apiKeys.remove('$userId/$providerId');
   }
+
+  final Map<String, String> values = <String, String>{};
+
+  @override
+  Future<String?> readValue(String key) async => values[key];
+
+  @override
+  Future<void> writeValue(String key, String value) async {
+    values[key] = value;
+  }
+
+  @override
+  Future<void> deleteValue(String key) async {
+    values.remove(key);
+  }
 }
 
 /// PocketBase double covering login plus the `ai_providers` collection.
@@ -83,6 +99,13 @@ class FakeAiBackend implements HttpClientAdapter {
 
   final Map<String, Map<String, dynamic>> store = <String, Map<String, dynamic>>{};
   final List<String> calls = <String>[];
+
+  /// Server-side shared config file backing /api/ai-config.
+  Map<String, dynamic> config = <String, dynamic>{
+    'version': 1,
+    'updated': '',
+    'providers': <dynamic>[],
+  };
 
   static ResponseBody _json(int status, Object? body) {
     return ResponseBody.fromString(
@@ -130,6 +153,19 @@ class FakeAiBackend implements HttpClientAdapter {
     }
 
     if (!path.contains('/collections/$collection/')) {
+      if (path == '/api/ai-config') {
+        if (method == 'GET') {
+          return _json(200, config);
+        }
+        if (method == 'PUT') {
+          config = <String, dynamic>{
+            'version': 1,
+            'updated': '2026-10-12T20:00:00Z',
+            'providers': body['providers'] ?? <dynamic>[],
+          };
+          return _json(200, config);
+        }
+      }
       return _json(404, <String, dynamic>{'message': 'not found'});
     }
 
@@ -254,8 +290,10 @@ void main() {
     await openProviders(tester, backend, FakeStorage());
 
     // Sorted by fallbackPriority.
-    expect(find.byType(Card), findsNWidgets(2));
-    expect(find.byType(Switch), findsNWidgets(2));
+    expect(find.byType(Card), findsNWidgets(3));
+    // One sync switch plus one per provider.
+    expect(find.byType(Switch), findsNWidgets(3));
+    expect(find.text('Синхронизация с сервером'), findsOneWidget);
     expect(find.text('Приоритет: 1'), findsOneWidget);
     expect(find.text('Добавить провайдера'), findsOneWidget);
     expect(find.text('Редактировать'), findsNWidgets(2));
@@ -274,7 +312,12 @@ void main() {
 
     await openProviders(tester, backend, FakeStorage());
 
-    await tester.tap(find.byType(Switch).first);
+    await tester.tap(
+      find.descendant(
+        of: find.widgetWithText(Card, 'OpenAI'),
+        matching: find.byType(Switch),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(
@@ -379,5 +422,58 @@ void main() {
     // Saving without touching the key must not send it to the server.
     expect(backend.store['p1']!.containsKey('api_key'), isFalse);
     expect(storage.apiKeys['${FakeAiBackend.userId}/p1'], 'stored-key');
+  });
+
+  testWidgets('enabling sync moves the list into the shared server file',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(<Map<String, dynamic>>[
+      _provider('p1', 'OpenAI', 1),
+      _provider('p2', 'Groq', 2),
+    ]);
+    final storage = FakeStorage();
+
+    await openProviders(tester, backend, storage);
+
+    // The synchronisation switch is the first one on the page.
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+
+    expect(backend.calls, contains('GET /api/ai-config'));
+    expect(backend.calls, contains('PUT /api/ai-config'));
+    expect((backend.config['providers'] as List<dynamic>).length, 2);
+    expect(storage.values[AiProvidersNotifier.syncFlagKey], 'true');
+
+    // Editing a provider now rewrites the shared file, not the collection.
+    final patchesBefore = backend.calls
+        .where((String c) => c.startsWith('PATCH'))
+        .length;
+
+    final groqSwitch = find.descendant(
+      of: find.widgetWithText(Card, 'Groq'),
+      matching: find.byType(Switch),
+    );
+    await tester.ensureVisible(groqSwitch);
+    await tester.pumpAndSettle();
+    await tester.tap(groqSwitch);
+    await tester.pumpAndSettle();
+
+    expect(
+      backend.calls.where((String c) => c.startsWith('PATCH')).length,
+      patchesBefore,
+    );
+
+    final saved = backend.config['providers'] as List<dynamic>;
+    final groq = saved.firstWhere(
+      (dynamic p) => (p as Map<String, dynamic>)['id'] == 'p2',
+    ) as Map<String, dynamic>;
+    expect(groq['enabled'], true);
+
+    // Secrets never reach the file.
+    expect(
+      saved.every(
+        (dynamic p) => !(p as Map<String, dynamic>).containsKey('api_key'),
+      ),
+      isTrue,
+    );
   });
 }

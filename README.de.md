@@ -195,6 +195,25 @@ Felder: `user` (Relation → `users`, required), `name` (text, required),
 > Ein Feld `api_key` wird auf dem Server **nicht** benötigt — der Key liegt nur
 > auf dem Gerät.
 
+### Gemeinsame Liste mit der Webseite
+
+Dieselbe Liste gibt es im Browser unter
+`https://app.devhorizon.online/ai-providers/`. PocketBase liefert diese Seite
+selbst aus, also derselbe Origin: Anmeldung, Registrierung, Abmelden sowie
+Anbieter hinzufügen, bearbeiten, aktivieren und löschen.
+
+Der Schalter **Синхронизация с сервером** im App-Bildschirm stellt beide Seiten
+auf eine gemeinsame JSON-Datei um: `pb_data/ai-config/<userId>.json`.
+
+| Schalter | Wo die Liste liegt |
+|---|---|
+| aus (Standard) | Collection `ai_providers` des Kontos |
+| an | gemeinsame JSON-Datei — Telefon und Webseite sehen dieselbe Liste |
+
+Beim Einschalten wird die aktuelle Liste hochgeladen, wenn die Datei noch leer
+ist. API-Keys werden nie hochgeladen: sie bleiben in `flutter_secure_storage` auf
+dem Gerät, und der Server verwirft ein `api_key`-Feld auch bei manuellen Aufrufen.
+
 ## Kompilieren
 
 ```bash
@@ -226,12 +245,19 @@ kotlin.incremental.useClasspathSnapshot=false
 | `install-pocketbase-service.sh` | installiert PocketBase als systemd-Dienst (`Restart=always`, Autostart beim Boot) |
 | `pocketbase.service` | Referenz-Unit für die manuelle Installation |
 | `create-ai-providers-migration.js` | Migration, die die Collection `ai_providers` erstellt |
+| `tighten-users-list-rule.js` | Migration, die das Leak bei leerem `q` in der `users`-List-Regel schließt |
+| `pb_hooks/` | die `/api/ai-config`-Routen und ihr Logikmodul |
+| `pb_public/ai-providers/` | die Webseite unter `/ai-providers/` |
 | `README.md` | Schritt-für-Schritt-Anleitung |
 
 ```bash
 sudo ./deploy/install-pocketbase-service.sh
 cp deploy/create-ai-providers-migration.js \
-   ~/pocketbase/pb_migrations/1760313600_create_ai_providers.js
+   ~/pocketbase/pb_migrations/1791463000_create_ai_providers.js
+cp deploy/tighten-users-list-rule.js \
+   ~/pocketbase/pb_migrations/1791463100_tighten_users_list_rule.js
+cp -r deploy/pb_hooks/*  ~/pocketbase/pb_hooks/
+cp -r deploy/pb_public/* ~/pocketbase/pb_public/
 sudo systemctl restart pocketbase
 ```
 

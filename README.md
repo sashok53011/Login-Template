@@ -190,6 +190,25 @@ Fields: `user` (relation → `users`, required), `name` (text, required),
 
 > No `api_key` field is needed on the server — the key lives on the device only.
 
+### Shared with the web page
+
+The same list is also available in a browser at
+`https://app.devhorizon.online/ai-providers/`. PocketBase serves that page
+itself, so it is the same origin: sign in, register, log out, then add, edit,
+enable or delete providers there.
+
+The **Синхронизация с сервером** switch on the app screen makes both sides use
+one shared JSON file, `pb_data/ai-config/<userId>.json`:
+
+| Switch | Where the list lives |
+|---|---|
+| off (default) | the account's `ai_providers` collection |
+| on | the shared JSON file — the phone and the web page see the same list |
+
+Turning the switch on uploads the current list when the file is still empty.
+API keys are never uploaded: they stay in `flutter_secure_storage` on the
+device, and the server drops an `api_key` field even if one is sent by hand.
+
 ## Build
 
 ```bash
@@ -221,12 +240,19 @@ kotlin.incremental.useClasspathSnapshot=false
 | `install-pocketbase-service.sh` | installs PocketBase as a systemd service (`Restart=always`, autostart on boot) |
 | `pocketbase.service` | reference copy of the unit file |
 | `create-ai-providers-migration.js` | PocketBase migration that creates the `ai_providers` collection |
+| `tighten-users-list-rule.js` | PocketBase migration closing the empty-`q` leak in the `users` List rule |
+| `pb_hooks/` | the `/api/ai-config` routes and their logic module |
+| `pb_public/ai-providers/` | the web page served at `/ai-providers/` |
 | `README.md` | step-by-step instructions |
 
 ```bash
 sudo ./deploy/install-pocketbase-service.sh
 cp deploy/create-ai-providers-migration.js \
-   ~/pocketbase/pb_migrations/1760313600_create_ai_providers.js
+   ~/pocketbase/pb_migrations/1791463000_create_ai_providers.js
+cp deploy/tighten-users-list-rule.js \
+   ~/pocketbase/pb_migrations/1791463100_tighten_users_list_rule.js
+cp -r deploy/pb_hooks/*  ~/pocketbase/pb_hooks/
+cp -r deploy/pb_public/* ~/pocketbase/pb_public/
 sudo systemctl restart pocketbase
 ```
 

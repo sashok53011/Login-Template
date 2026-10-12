@@ -86,6 +86,14 @@ class SecureStorageService {
     }
   }
 
+  // Generic values (used for the AI providers sync flag).
+  Future<String?> readValue(String key) => _storage.read(key: key);
+
+  Future<void> writeValue(String key, String value) =>
+      _storage.write(key: key, value: value);
+
+  Future<void> deleteValue(String key) => _storage.delete(key: key);
+
   String _key({required String userId, required String providerId}) {
     return 'ai_provider_${userId}_$providerId';
   }

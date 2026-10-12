@@ -190,6 +190,24 @@ API-ключ не покидает устройство: `AiProvidersService` в
 
 > Поле `api_key` на сервере **не нужно** — ключ хранится только на устройстве.
 
+### Общий список с веб-страницей
+
+Тот же список доступен в браузере: `https://app.devhorizon.online/ai-providers/`.
+Страницу отдаёт сам PocketBase, поэтому это тот же origin: вход, регистрация,
+выход, добавление, правка, включение и удаление провайдеров.
+
+Переключатель **«Синхронизация с сервером»** на экране приложения переводит обе
+стороны на один общий JSON-файл `pb_data/ai-config/<userId>.json`:
+
+| Переключатель | Где лежит список |
+|---|---|
+| выключен (по умолчанию) | коллекция `ai_providers` вашего аккаунта |
+| включён | общий JSON-файл — телефон и веб-страница видят один список |
+
+При включении текущий список выгружается на сервер, если файл ещё пуст.
+API-ключи не выгружаются никогда: они остаются в `flutter_secure_storage` на
+устройстве, а сервер отбрасывает поле `api_key`, даже если его прислать руками.
+
 ## Сборка
 
 ```bash
@@ -221,12 +239,19 @@ kotlin.incremental.useClasspathSnapshot=false
 | `install-pocketbase-service.sh` | ставит PocketBase как systemd-сервис (`Restart=always`, автозапуск при загрузке) |
 | `pocketbase.service` | эталонный юнит для ручной установки |
 | `create-ai-providers-migration.js` | миграция, создающая коллекцию `ai_providers` |
+| `tighten-users-list-rule.js` | миграция, закрывающая утечку по пустому `q` в правиле `users` |
+| `pb_hooks/` | маршруты `/api/ai-config` и их модуль логики |
+| `pb_public/ai-providers/` | веб-страница `/ai-providers/` |
 | `README.md` | пошаговая инструкция |
 
 ```bash
 sudo ./deploy/install-pocketbase-service.sh
 cp deploy/create-ai-providers-migration.js \
-   ~/pocketbase/pb_migrations/1760313600_create_ai_providers.js
+   ~/pocketbase/pb_migrations/1791463000_create_ai_providers.js
+cp deploy/tighten-users-list-rule.js \
+   ~/pocketbase/pb_migrations/1791463100_tighten_users_list_rule.js
+cp -r deploy/pb_hooks/*  ~/pocketbase/pb_hooks/
+cp -r deploy/pb_public/* ~/pocketbase/pb_public/
 sudo systemctl restart pocketbase
 ```
 

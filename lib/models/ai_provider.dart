@@ -106,6 +106,27 @@ class AiProvider extends Equatable {
     };
   }
 
+  /// Payload for the shared server-side config file (`/api/ai-config`).
+  ///
+  /// Unlike [toJsonForPocketBase] it carries the `id` (the web page needs it to
+  /// match records) and never the owner, which the server derives from the auth
+  /// token. The API key is not included — it must not leave the device.
+  Map<String, dynamic> toSyncJson() {
+    return <String, dynamic>{
+      'id': id,
+      'name': name,
+      'enabled': enabled,
+      'url': url,
+      'model': model,
+      'fallbackPriority': fallbackPriority,
+      'loginUrl': loginUrl ?? '',
+      'getApiKeyUrl': getApiKeyUrl ?? '',
+      'logoUrl': logoUrl ?? '',
+      'logoAsset': logoAsset ?? '',
+      'isPredefined': isPredefined,
+    };
+  }
+
   AiProvider copyWith({
     String? id,
     String? userId,
