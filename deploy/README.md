@@ -42,6 +42,10 @@ curl -sS -o /dev/null -w "%{http_code}\n" https://app.devhorizon.online/api/heal
 
 Ожидаемо: `active (running)`, `{"message":"API is healthy."}`, и **200** снаружи.
 
+> Если копируешь скрипт с Windows, проверь переводы строк: bash ругается
+> `bad interpreter: /usr/bin/env bash^M`, если в файле CRLF. Лечится за секунду:
+> `sed -i 's/\r$//' install-pocketbase-service.sh`
+
 ## Шаг 2. Коллекция `ai_providers`
 
 Экран «AI Providers list» в приложении работает с коллекцией `ai_providers`.

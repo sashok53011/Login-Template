@@ -1,0 +1,6 @@
+# Shell scripts and the PocketBase migration must keep LF line endings:
+# `core.autocrlf=true` on Windows would otherwise write CRLF and break
+# `#!/usr/bin/env bash` on Linux with a "bad interpreter" error.
+*.sh text eol=lf
+*.js text eol=lf
+*.service text eol=lf
