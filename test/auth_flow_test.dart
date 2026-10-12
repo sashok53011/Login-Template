@@ -45,6 +45,21 @@ class FakeStorage extends SecureStorageService {
     token = null;
     data = <String, String?>{};
   }
+
+  final Map<String, String> values = <String, String>{};
+
+  @override
+  Future<String?> readValue(String key) async => values[key];
+
+  @override
+  Future<void> writeValue(String key, String value) async {
+    values[key] = value;
+  }
+
+  @override
+  Future<void> deleteValue(String key) async {
+    values.remove(key);
+  }
 }
 
 /// PocketBase double. Behaviour is controlled by [knownEmail] /

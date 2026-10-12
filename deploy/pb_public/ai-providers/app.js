@@ -15,6 +15,7 @@ const state = {
   token: localStorage.getItem(TOKEN_KEY) || null,
   user: safeParse(localStorage.getItem(USER_KEY)),
   config: null,
+  canEdit: false,
   editingId: null,
 };
 
@@ -28,6 +29,7 @@ const el = {
   registerForm: document.getElementById("register-form"),
   authNote: document.getElementById("auth-note"),
   providers: document.getElementById("providers"),
+  providersNote: document.getElementById("providers-note"),
   emptyNote: document.getElementById("empty-note"),
   syncStatus: document.getElementById("sync-status"),
   errorNote: document.getElementById("error-note"),
@@ -38,6 +40,7 @@ const el = {
   reloadBtn: document.getElementById("reload-btn"),
   logoutBtn: document.getElementById("logout-btn"),
   editorCancel: document.getElementById("editor-cancel"),
+  adminLogin: document.getElementById("admin-login"),
 };
 
 function safeParse(raw) {
@@ -142,16 +145,29 @@ function localizeField(message) {
 
 /* ----------------------------------------------------------------- auth */
 
-async function doLogin(identity, password) {
-  const data = await api("/api/collections/users/auth-with-password", {
-    method: "POST",
-    auth: false,
-    body: { identity: identity, password: password },
-  });
+async function doLogin(identity, password, isAdmin) {
+  // PocketBase keeps superusers in a separate collection.
+  const collectionName = isAdmin ? "_superusers" : "users";
+
+  const data = await api(
+    "/api/collections/" + collectionName + "/auth-with-password",
+    {
+      method: "POST",
+      auth: false,
+      body: { identity: identity, password: password },
+    },
+  );
+
+  const record = data.record || {};
   state.token = data.token;
-  state.user = data.record;
+  state.user = {
+    name: record.name || record.email || "superuser",
+    email: record.email || "",
+    isAdmin: !!isAdmin,
+  };
+
   localStorage.setItem(TOKEN_KEY, data.token);
-  localStorage.setItem(USER_KEY, JSON.stringify(data.record));
+  localStorage.setItem(USER_KEY, JSON.stringify(state.user));
 }
 
 async function doRegister(email, name, password, passwordConfirm) {
@@ -165,7 +181,7 @@ async function doRegister(email, name, password, passwordConfirm) {
       passwordConfirm: passwordConfirm,
     },
   });
-  await doLogin(email, password);
+  await doLogin(email, password, false);
 }
 
 function doLogout() {
@@ -184,6 +200,8 @@ async function loadConfig() {
   if (!Array.isArray(state.config.providers)) {
     state.config.providers = [];
   }
+  // Granted only to a PocketBase superuser.
+  state.canEdit = state.config.canEdit === true;
 }
 
 async function saveConfig() {
@@ -209,11 +227,16 @@ function render() {
   el.authView.hidden = loggedIn;
   el.providersView.hidden = !loggedIn;
   el.topbarActions.hidden = !loggedIn;
-  el.who.textContent = state.user
-    ? state.user.name || state.user.email || ""
-    : "";
+
+  if (state.user) {
+    el.who.textContent =
+      (state.user.name || state.user.email || "") +
+      (state.user.isAdmin ? " (админ)" : "");
+  }
 
   if (loggedIn) {
+    // Adding, editing and deleting is reserved for the superuser.
+    el.addBtn.hidden = !state.canEdit;
     renderProviders();
     stampSync();
   }
@@ -243,6 +266,16 @@ function renderProviders() {
   el.providers.textContent = "";
   el.emptyNote.hidden = list.length > 0;
 
+  el.providersNote.innerHTML = state.canEdit
+    ? "Вы вошли как <strong>администратор</strong>: здесь задаётся каталог " +
+      "провайдеров для всех пользователей. Помеченные «не работает» " +
+      "убираются из списков пользователей. <strong>API-ключи</strong> здесь " +
+      "не хранятся — их вводят в приложении."
+    : "Каталог провайдеров ведёт администратор. Здесь можно " +
+      "<strong>включить</strong> нужных провайдеров — они появятся в " +
+      "Android-приложении. <strong>API-ключи</strong> на сервере не " +
+      "хранятся: их вводят только в приложении, они остаются на устройстве.";
+
   list.forEach(function (provider) {
     el.providers.appendChild(providerCard(provider));
   });
@@ -258,6 +291,12 @@ function providerCard(provider) {
   const body = document.createElement("div");
   const title = document.createElement("h3");
   title.textContent = provider.name;
+  if (provider.status === "dead") {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = "не работает";
+    title.appendChild(badge);
+  }
   body.appendChild(title);
 
   const dl = document.createElement("dl");
@@ -293,23 +332,26 @@ function providerCard(provider) {
   });
   actions.appendChild(toggle);
 
-  actions.appendChild(
-    miniButton("Редактировать", function () {
-      openEditor(provider.id);
-    }),
-  );
-  actions.appendChild(
-    miniButton("Удалить", function () {
-      if (!confirm("Удалить провайдера «" + provider.name + "»?")) {
-        return;
-      }
-      state.config.providers = state.config.providers.filter(function (p) {
-        return p.id !== provider.id;
-      });
-      renderProviders();
-      persist();
-    }),
-  );
+  // Only the superuser may change the catalogue.
+  if (state.canEdit) {
+    actions.appendChild(
+      miniButton("Редактировать", function () {
+        openEditor(provider.id);
+      }),
+    );
+    actions.appendChild(
+      miniButton("Удалить", function () {
+        if (!confirm("Удалить провайдера «" + provider.name + "»?")) {
+          return;
+        }
+        state.config.providers = state.config.providers.filter(function (p) {
+          return p.id !== provider.id;
+        });
+        renderProviders();
+        persist();
+      }),
+    );
+  }
 
   card.appendChild(actions);
   return card;
@@ -401,6 +443,7 @@ function openEditor(id) {
   form.getApiKeyUrl.value = provider ? provider.getApiKeyUrl : "";
   form.logoUrl.value = provider ? provider.logoUrl : "";
   form.logoAsset.value = provider ? provider.logoAsset : "";
+  form.status.value = provider ? provider.status : "active";
 
   el.editor.showModal();
 }
@@ -426,6 +469,7 @@ function submitEditor(event) {
     getApiKeyUrl: form.getApiKeyUrl.value.trim(),
     logoUrl: form.logoUrl.value.trim(),
     logoAsset: form.logoAsset.value,
+    status: form.status.value === "dead" ? "dead" : "active",
     isPredefined: false,
   };
 
@@ -477,8 +521,8 @@ async function refresh() {
   try {
     await loadConfig();
     setError("");
-    renderProviders();
-    stampSync();
+    // render() also refreshes the toolbar: canEdit arrives with the config.
+    render();
   } catch (err) {
     if (err.status === 401) {
       doLogout();
@@ -506,7 +550,11 @@ el.loginForm.addEventListener("submit", async function (event) {
   const form = event.target;
   setAuthNote("");
   try {
-    await doLogin(form.identity.value.trim(), form.password.value);
+    await doLogin(
+      form.identity.value.trim(),
+      form.password.value,
+      el.adminLogin.checked,
+    );
     form.reset();
     render();
     refresh();

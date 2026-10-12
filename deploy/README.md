@@ -32,7 +32,11 @@ sudo ./install-pocketbase-service.sh /home/USER/pb   # или явно
 > Если копируешь скрипт с Windows — проверь переводы строк, иначе bash ругается
 > `bad interpreter: /usr/bin/env bash^M`: `sed -i 's/\r$//' install-pocketbase-service.sh`
 
-## Шаг 2. Коллекция `ai_providers`
+## Шаг 2. Коллекция `ai_providers` (не обязательна)
+
+> Начиная с версии с каталогом приложение **не использует** эту коллекцию:
+> провайдеры теперь приходят из `catalogue.json`. Миграция оставлена для
+> совместимости и для старых сборок; на работу текущей версии она не влияет.
 
 ```bash
 cp create-ai-providers-migration.js \
@@ -60,7 +64,7 @@ curl -sS -G http://127.0.0.1:8090/api/collections/users/records \
   --data "k=pb_av_1" --data "perPage=1"
 ```
 
-## Шаг 4. Веб-страница и общий конфиг
+## Шаг 4. Каталог провайдеров, веб-страница и API
 
 Файлы из `pb_hooks/` и `pb_public/` копируются в каталог PocketBase:
 
@@ -70,17 +74,50 @@ cp -r pb_public/* ~/pocketbase/pb_public/
 sudo systemctl restart pocketbase
 ```
 
-Что получается:
+### Модель доступа
 
-| URL | Что это |
-|---|---|
-| `/ai-providers/` | веб-версия списка: вход, регистрация, выход, добавление и правка провайдеров |
-| `GET/PUT /api/ai-config` | общий конфиг текущего пользователя, требует токен |
+Каталог провайдеров — один общий файл, который правит **только superuser
+PocketBase**. Обычный пользователь не может добавлять, править или удалять
+провайдеров: он лишь включает нужные и хранит свои API-ключи на устройстве.
 
-Конфиг лежит в `pb_data/ai-config/<userId>.json` (права 0600), по одному файлу
-на пользователя. **API-ключей там нет** — они живут только на устройстве в
-`flutter_secure_storage`, а сервер отбрасывает поле `api_key`, даже если его
-прислать руками.
+| Файл | Кто пишет | Что внутри |
+|---|---|---|
+| `pb_data/ai-config/catalogue.json` | только superuser | определения провайдеров + `status: active \| dead` |
+| `pb_data/ai-config/<userId>.json` | сам пользователь | только флаги `enabled` (права 0600) |
+
+| Маршрут | Кто | Что делает |
+|---|---|---|
+| `GET /api/ai-config` | вход + superuser | каталог с флагами пользователя, поле `canEdit` |
+| `PUT /api/ai-config` | superuser | заменяет каталог |
+| `PUT /api/ai-config` | обычный пользователь | сохраняет **только** флаги `enabled`; всё остальное игнорируется, а провайдеры вне каталога отбрасываются |
+| `DELETE /api/ai-config` | обычный пользователь | сбрасывает свои флаги |
+| `GET /api/ai-config/meta` | вход + superuser | диагностика, `isSuperuser` |
+
+Поле `status: dead` — это «след, что провайдер умер». Такой провайдер исчезает
+у пользователей, **у которых он выключен**; включённые не трогаются, чтобы
+человек не терял свою настройку. Администратор всегда видит все записи, чтобы
+снять пометку.
+
+### Первичное наполнение каталога
+
+```bash
+cp catalogue.json ~/pocketbase/pb_data/ai-config/catalogue.json
+sudo systemctl restart pocketbase
+```
+
+В `catalogue.json` уже лежат 10 популярных провайдеров со `status: active`.
+
+### Веб-страница
+
+`https://app.devhorizon.online/ai-providers/` — та же страница для обеих ролей:
+
+* **обычный пользователь**: вход по своему аккаунту, переключатели
+  «включить/выключить», без кнопок правки;
+* **администратор**: в форме входа галочка «Вход администратора (superuser)» —
+  после неё доступны добавление, правка, удаление и поле статуса.
+
+**API-ключей на сервере нет ни в одном из режимов.** Сервер отбрасывает поле
+`api_key`, даже если прислать его руками, и это же проверяет тест.
 
 Проверка с токеном:
 
@@ -136,24 +173,23 @@ PY
 
 ## Что создаётся
 
-Коллекция `ai_providers`:
+Запись каталога (`catalogue.json`), она же — форма ответа `/api/ai-config`:
 
 | Поле | Тип | Примечание |
 |---|---|---|
-| `user` | relation → `users` | required, владелец записи |
-| `name` | text | required |
-| `enabled` | bool | вкл/выкл провайдера |
-| `url` | url | required |
-| `model` | text | required |
-| `fallbackPriority` | number | min 0, сортировка списка |
-| `loginUrl` | url | страница логина провайдера |
-| `getApiKeyUrl` | url | получение API-ключа |
-| `logoUrl` | url | кастомный логотип |
+| `id` | text | идентификатор, например `openai` |
+| `name` | text | обязательное |
+| `url` | text | endpoint провайдера |
+| `model` | text | модель по умолчанию |
+| `fallbackPriority` | number | порядок в списке |
+| `loginUrl` | text | страница логина провайдера |
+| `getApiKeyUrl` | text | получение API-ключа |
+| `logoUrl` | text | кастомный логотип (ссылка) |
 | `logoAsset` | text | имя файла из `assets/logos` |
-| `isPredefined` | bool | из предзаполненного списка |
+| `status` | `active` \| `dead` | «провайдер умер»: у пользователей с выключенным он исчезает |
+| `enabled` | bool | **только для чтения**: приходит из флагов пользователя |
 
-Правила доступа: `@request.auth.id != '' && user = @request.auth.id` для
-List/View/Update/Delete, `@request.auth.id != ''` для Create.
+Поля `enabled` в каталоге нет — она относится к пользователю, а не к провайдеру.
 
 ## Где что лежит на сервере
 
@@ -163,7 +199,9 @@ List/View/Update/Delete, `@request.auth.id != ''` для Create.
 ├── pb_data/
 │   ├── data.db                 база
 │   ├── auxiliary.db            логи
-│   └── ai-config/<userId>.json общий конфиг (по файлу на пользователя)
+│   └── ai-config/
+│       ├── catalogue.json      каталог провайдеров (правит superuser)
+│       └── <userId>.json       флаги «включён» (по файлу на пользователя)
 ├── pb_migrations/              применённые миграции
 ├── pb_hooks/
 │   ├── ai-config.pb.js         маршруты /api/ai-config

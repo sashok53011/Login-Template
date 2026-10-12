@@ -1,0 +1,126 @@
+{
+  "version": 2,
+  "updated": "",
+  "providers": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "url": "https://api.openai.com/v1",
+      "model": "gpt-4o-mini",
+      "fallbackPriority": 1,
+      "loginUrl": "https://platform.openai.com/",
+      "getApiKeyUrl": "https://platform.openai.com/api-keys",
+      "logoUrl": "",
+      "logoAsset": "openai",
+      "status": "active"
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic (Claude)",
+      "url": "https://api.anthropic.com",
+      "model": "claude-3.5-sonnet",
+      "fallbackPriority": 2,
+      "loginUrl": "https://console.anthropic.com/",
+      "getApiKeyUrl": "https://console.anthropic.com/settings/keys",
+      "logoUrl": "",
+      "logoAsset": "anthropic",
+      "status": "active"
+    },
+    {
+      "id": "gemini",
+      "name": "Google Gemini",
+      "url": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "model": "gemini-1.5-flash",
+      "fallbackPriority": 3,
+      "loginUrl": "https://aistudio.google.com/",
+      "getApiKeyUrl": "https://aistudio.google.com/apikey",
+      "logoUrl": "",
+      "logoAsset": "google-gemini",
+      "status": "active"
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "url": "https://api.groq.com/openai/v1",
+      "model": "llama-3.1-8b-instant",
+      "fallbackPriority": 4,
+      "loginUrl": "https://console.groq.com/",
+      "getApiKeyUrl": "https://console.groq.com/keys",
+      "logoUrl": "",
+      "logoAsset": "groq",
+      "status": "active"
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "url": "https://openrouter.ai/api/v1",
+      "model": "openrouter/auto",
+      "fallbackPriority": 5,
+      "loginUrl": "https://www.openrouter.ai/",
+      "getApiKeyUrl": "https://www.openrouter.ai/keys",
+      "logoUrl": "",
+      "logoAsset": "openrouter",
+      "status": "active"
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama",
+      "url": "http://localhost:11434/v1",
+      "model": "llama3.2",
+      "fallbackPriority": 6,
+      "loginUrl": "https://ollama.com/",
+      "getApiKeyUrl": "https://ollama.com/",
+      "logoUrl": "",
+      "logoAsset": "ollama",
+      "status": "active"
+    },
+    {
+      "id": "lmstudio",
+      "name": "LM Studio",
+      "url": "http://localhost:1234/v1",
+      "model": "local-model",
+      "fallbackPriority": 7,
+      "loginUrl": "https://lmstudio.ai/",
+      "getApiKeyUrl": "https://lmstudio.ai/",
+      "logoUrl": "",
+      "logoAsset": "lmstudio",
+      "status": "active"
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral",
+      "url": "https://api.mistral.ai/v1",
+      "model": "mistral-small-latest",
+      "fallbackPriority": 8,
+      "loginUrl": "https://console.mistral.ai/",
+      "getApiKeyUrl": "https://console.mistral.ai/api-keys/",
+      "logoUrl": "",
+      "logoAsset": "mistral",
+      "status": "active"
+    },
+    {
+      "id": "together",
+      "name": "Together AI",
+      "url": "https://api.together.xyz/v1",
+      "model": "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+      "fallbackPriority": 9,
+      "loginUrl": "https://www.together.ai/",
+      "getApiKeyUrl": "https://api.together.xyz/settings/api-keys",
+      "logoUrl": "",
+      "logoAsset": "together",
+      "status": "active"
+    },
+    {
+      "id": "fireworks",
+      "name": "Fireworks AI",
+      "url": "https://api.fireworks.ai/inference/v1",
+      "model": "accounts/fireworks/models/llama-v3p1-8b-instruct",
+      "fallbackPriority": 10,
+      "loginUrl": "https://app.fireworks.ai/",
+      "getApiKeyUrl": "https://app.fireworks.ai/settings/users/api-keys",
+      "logoUrl": "",
+      "logoAsset": "fireworks",
+      "status": "active"
+    }
+  ]
+}

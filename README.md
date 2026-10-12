@@ -17,10 +17,13 @@ and a `You are logged in as ...` screen after a successful sign-in.
 - Home screen: `You are logged in as <username / email / id>`
 - Logout with confirmation
 - Splash screen while the session is being restored
+- Remembers the email of the last sign-in (the password goes to Android's
+  password manager via autofill)
 - Hook for Google OAuth (`signInWithGoogle()` in `auth_service.dart`)
-- **AI Providers list** (after login): enable/disable, editable URL / model /
-  API key / fallback priority, provider logos, login and API-key links,
-  add / edit / delete
+- **AI Providers list** (after login): switch catalogue entries on and off,
+  store your own API key on the device, provider logos, links to the provider
+  login and API-key pages. The catalogue itself is maintained by a PocketBase
+  superuser, on the web page
 
 ## Stack
 
@@ -43,14 +46,15 @@ lib/
 │   └── constants.dart       # storage keys
 ├── models/
 │   ├── action_result.dart   # outcome of the last register/login attempt
-│   ├── ai_provider.dart     # AI provider configuration
+│   ├── ai_config.dart       # catalogue document + canEdit flag
+│   ├── ai_provider.dart     # one provider entry + its status
 │   └── user.dart            # user model + displayName
 ├── providers/
 │   ├── action_result_provider.dart
-│   ├── ai_providers_provider.dart # AI providers + predefined list
+│   ├── ai_providers_provider.dart # catalogue view, enable flags, keys
 │   └── auth_provider.dart   # AuthNotifier + Riverpod providers
 ├── services/
-│   ├── ai_providers_service.dart # CRUD for the ai_providers collection
+│   ├── ai_config_sync_service.dart # GET/PUT /api/ai-config
 │   ├── api_client.dart      # Dio + auth header
 │   ├── auth_service.dart    # register / login / logout / availability
 │   └── secure_storage_service.dart
@@ -169,9 +173,9 @@ OpenRouter, Ollama, LM Studio, Mistral, Together, Fireworks).
 | name, enabled, url, model, fallbackPriority, links, logo | PocketBase collection `ai_providers` |
 | API key | `flutter_secure_storage`, key `ai_provider_<userId>_<providerId>` |
 
-The API key never leaves the device: `AiProvidersService` strips `api_key` from
-every request and reads it back from secure storage, so the key is not in the
-database, in backups or in server logs.
+The API key never leaves the device: the sync service strips `api_key` from
+every request, the server drops it as well, and the key itself lives in secure
+storage — so it is not in the database, in backups or in server logs.
 
 ### API Rules for the `ai_providers` collection
 
@@ -190,24 +194,35 @@ Fields: `user` (relation → `users`, required), `name` (text, required),
 
 > No `api_key` field is needed on the server — the key lives on the device only.
 
-### Shared with the web page
+### The catalogue is owned by an administrator
 
-The same list is also available in a browser at
-`https://app.devhorizon.online/ai-providers/`. PocketBase serves that page
-itself, so it is the same origin: sign in, register, log out, then add, edit,
-enable or delete providers there.
+Provider definitions live in one shared catalogue on the server
+(`pb_data/ai-config/catalogue.json`), and only a **PocketBase superuser** may
+add, change or delete them. A regular user can switch entries on and off and
+keep their own API keys — nothing else.
 
-The **Синхронизация с сервером** switch on the app screen makes both sides use
-one shared JSON file, `pb_data/ai-config/<userId>.json`:
+The same list is in a browser at `https://app.devhorizon.online/ai-providers/`
+(PocketBase serves that page itself, so it is the same origin). There an
+administrator ticks “Вход администратора (superuser)” to manage the catalogue;
+a regular account only gets the switches.
 
-| Switch | Where the list lives |
+On every sync only the entries a user switched **off** are reconciled:
+
+| Situation | What happens |
 |---|---|
-| off (default) | the account's `ai_providers` collection |
-| on | the shared JSON file — the phone and the web page see the same list |
+| still in the catalogue | kept, and the fresh URL / model is taken from it |
+| `status: dead` | dropped — the mark that the provider stopped working |
+| no longer in the catalogue | dropped |
 
-Turning the switch on uploads the current list when the file is still empty.
-API keys are never uploaded: they stay in `flutter_secure_storage` on the
+Entries switched **on** are never touched: their URL, model and key stay as the
+user left them, even when the catalogue marks them dead.
+
+API keys never reach the server: they stay in `flutter_secure_storage` on the
 device, and the server drops an `api_key` field even if one is sent by hand.
+
+The **email** of the last successful sign-in is remembered and prefilled; the
+password is not stored by the app — Android's password manager fills it in
+through the autofill hints.
 
 ## Build
 
@@ -241,6 +256,7 @@ kotlin.incremental.useClasspathSnapshot=false
 | `pocketbase.service` | reference copy of the unit file |
 | `create-ai-providers-migration.js` | PocketBase migration that creates the `ai_providers` collection |
 | `tighten-users-list-rule.js` | PocketBase migration closing the empty-`q` leak in the `users` List rule |
+| `catalogue.json` | the initial provider catalogue (10 entries, all `active`) |
 | `pb_hooks/` | the `/api/ai-config` routes and their logic module |
 | `pb_public/ai-providers/` | the web page served at `/ai-providers/` |
 | `README.md` | step-by-step instructions |
@@ -253,6 +269,7 @@ cp deploy/tighten-users-list-rule.js \
    ~/pocketbase/pb_migrations/1791463100_tighten_users_list_rule.js
 cp -r deploy/pb_hooks/*  ~/pocketbase/pb_hooks/
 cp -r deploy/pb_public/* ~/pocketbase/pb_public/
+cp deploy/catalogue.json ~/pocketbase/pb_data/ai-config/catalogue.json
 sudo systemctl restart pocketbase
 ```
 

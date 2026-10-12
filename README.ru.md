@@ -17,10 +17,12 @@
 - Экран главной страницы: `Вы зашли как <username / email / id>`
 - Выход из аккаунта с подтверждением
 - Splash-экран, пока восстанавливается сессия
+- Запоминается email последнего входа (пароль — в менеджер паролей Android
+  через autofill)
 - Задел под Google OAuth (метод `signInWithGoogle()` в `auth_service.dart`)
-- **AI Providers list** (после входа): вкл/выкл, редактирование URL / model /
-  API-ключа / fallback priority, логотипы провайдеров, ссылки на страницу
-  логина и получения ключа, add / edit / delete
+- **AI Providers list** (после входа): включение/выключение провайдеров из
+  каталога, свой API-ключ на устройстве, логотипы, ссылки на страницу логина и
+  получения ключа. Сам каталог ведёт superuser PocketBase на веб-странице
 
 ## Стек
 
@@ -43,14 +45,15 @@ lib/
 │   └── constants.dart       # ключи хранилища
 ├── models/
 │   ├── action_result.dart   # результат последней попытки входа/регистрации
-│   ├── ai_provider.dart     # конфигурация AI-провайдера
+│   ├── ai_config.dart       # документ каталога + флаг canEdit
+│   ├── ai_provider.dart     # один провайдер и его статус
 │   └── user.dart            # модель пользователя + displayName
 ├── providers/
 │   ├── action_result_provider.dart
-│   ├── ai_providers_provider.dart # провайдеры + список популярных
+│   ├── ai_providers_provider.dart # каталог, флаги «включён», ключи
 │   └── auth_provider.dart   # AuthNotifier + провайдеры Riverpod
 ├── services/
-│   ├── ai_providers_service.dart  # CRUD коллекции ai_providers
+│   ├── ai_config_sync_service.dart # GET/PUT /api/ai-config
 │   ├── api_client.dart      # Dio + авторизационный заголовок
 │   ├── auth_service.dart    # register / login / logout / проверка доступности
 │   └── secure_storage_service.dart
@@ -169,9 +172,9 @@ OpenRouter, Ollama, LM Studio, Mistral, Together, Fireworks).
 | name, enabled, url, model, fallbackPriority, ссылки, логотип | Коллекция PocketBase `ai_providers` |
 | API-ключ | `flutter_secure_storage`, ключ `ai_provider_<userId>_<providerId>` |
 
-API-ключ не покидает устройство: `AiProvidersService` вырезает `api_key` из
-любого запроса и читает ключ обратно из secure storage. Поэтому ключа нет ни в
-базе, ни в бэкапах, ни в логах сервера.
+API-ключ не покидает устройство: сервис синхронизации вырезает `api_key` из
+любого запроса, сервер его тоже отбрасывает, а сам ключ лежит в secure storage —
+поэтому его нет ни в базе, ни в бэкапах, ни в логах сервера.
 
 ### API Rules коллекции `ai_providers`
 
@@ -190,23 +193,35 @@ API-ключ не покидает устройство: `AiProvidersService` в
 
 > Поле `api_key` на сервере **не нужно** — ключ хранится только на устройстве.
 
-### Общий список с веб-страницей
+### Каталог ведёт администратор
 
-Тот же список доступен в браузере: `https://app.devhorizon.online/ai-providers/`.
-Страницу отдаёт сам PocketBase, поэтому это тот же origin: вход, регистрация,
-выход, добавление, правка, включение и удаление провайдеров.
+Определения провайдеров лежат в одном общем каталоге на сервере
+(`pb_data/ai-config/catalogue.json`), и добавлять, менять или удалять их может
+**только superuser PocketBase**. Обычный пользователь лишь включает нужные
+провайдеры и хранит свои API-ключи.
 
-Переключатель **«Синхронизация с сервером»** на экране приложения переводит обе
-стороны на один общий JSON-файл `pb_data/ai-config/<userId>.json`:
+Тот же список доступен в браузере: `https://app.devhorizon.online/ai-providers/`
+(страницу отдаёт сам PocketBase, поэтому это тот же origin). Там администратор
+ставит галочку «Вход администратора (superuser)» и правит каталог; обычному
+аккаунту достаются только переключатели.
 
-| Переключатель | Где лежит список |
+При синхронизации обрабатываются только **выключенные** провайдеры:
+
+| Ситуация | Что происходит |
 |---|---|
-| выключен (по умолчанию) | коллекция `ai_providers` вашего аккаунта |
-| включён | общий JSON-файл — телефон и веб-страница видят один список |
+| есть в каталоге | остаётся, и из каталога подтягивается свежий URL / модель |
+| `status: dead` | удаляется — это пометка, что провайдер перестал работать |
+| больше нет в каталоге | удаляется |
 
-При включении текущий список выгружается на сервер, если файл ещё пуст.
-API-ключи не выгружаются никогда: они остаются в `flutter_secure_storage` на
+**Включённые не трогаются вообще**: их URL, модель и ключ остаются такими,
+какими их оставил пользователь, даже если в каталоге провайдер помечен мёртвым.
+
+API-ключи не попадают на сервер: они лежат в `flutter_secure_storage` на
 устройстве, а сервер отбрасывает поле `api_key`, даже если его прислать руками.
+
+**Email** последнего удачного входа запоминается и подставляется в следующий
+раз; пароль приложение не хранит — его подставляет менеджер паролей Android
+через autofill.
 
 ## Сборка
 
@@ -240,6 +255,7 @@ kotlin.incremental.useClasspathSnapshot=false
 | `pocketbase.service` | эталонный юнит для ручной установки |
 | `create-ai-providers-migration.js` | миграция, создающая коллекцию `ai_providers` |
 | `tighten-users-list-rule.js` | миграция, закрывающая утечку по пустому `q` в правиле `users` |
+| `catalogue.json` | стартовый каталог провайдеров (10 записей, все `active`) |
 | `pb_hooks/` | маршруты `/api/ai-config` и их модуль логики |
 | `pb_public/ai-providers/` | веб-страница `/ai-providers/` |
 | `README.md` | пошаговая инструкция |
@@ -252,6 +268,7 @@ cp deploy/tighten-users-list-rule.js \
    ~/pocketbase/pb_migrations/1791463100_tighten_users_list_rule.js
 cp -r deploy/pb_hooks/*  ~/pocketbase/pb_hooks/
 cp -r deploy/pb_public/* ~/pocketbase/pb_public/
+cp deploy/catalogue.json ~/pocketbase/pb_data/ai-config/catalogue.json
 sudo systemctl restart pocketbase
 ```
 

@@ -18,10 +18,13 @@ Anmeldung.
 - Startbildschirm: `Sie sind angemeldet als <Benutzername / E-Mail / id>`
 - Abmelden mit Bestätigung
 - Splash-Bildschirm, während die Sitzung wiederhergestellt wird
+- Die E-Mail der letzten Anmeldung wird gemerkt (das Passwort übernimmt der
+  Passwortmanager von Android per Autofill)
 - Ansatz für Google OAuth (`signInWithGoogle()` in `auth_service.dart`)
-- **AI Providers list** (nach der Anmeldung): Ein-/Ausschalten, bearbeitbare
-  URL / Model / API-Key / Fallback-Priorität, Anbieter-Logos, Links zu
-  Login- und API-Key-Seite, Add / Edit / Delete
+- **AI Providers list** (nach der Anmeldung): Katalogeinträge ein- und
+  ausschalten, eigenen API-Key auf dem Gerät hinterlegen, Anbieter-Logos, Links
+  zu Login- und API-Key-Seite. Den Katalog selbst pflegt ein
+  PocketBase-Superuser auf der Webseite
 
 ## Stack
 
@@ -44,14 +47,15 @@ lib/
 │   └── constants.dart       # Speicherschlüssel
 ├── models/
 │   ├── action_result.dart   # Ergebnis der letzten Registrierungs-/Anmeldeversuche
-│   ├── ai_provider.dart     # Konfiguration eines AI-Anbieters
+│   ├── ai_config.dart       # Katalogdokument + canEdit-Flag
+│   ├── ai_provider.dart     # ein Anbieter und sein Status
 │   └── user.dart            # Benutzermodell + displayName
 ├── providers/
 │   ├── action_result_provider.dart
-│   ├── ai_providers_provider.dart # Anbieter + Liste der beliebten Anbieter
+│   ├── ai_providers_provider.dart # Katalog, Einschalt-Flags, Keys
 │   └── auth_provider.dart   # AuthNotifier + Riverpod-Provider
 ├── services/
-│   ├── ai_providers_service.dart  # CRUD für die Collection ai_providers
+│   ├── ai_config_sync_service.dart # GET/PUT /api/ai-config
 │   ├── api_client.dart      # Dio + Auth-Header
 │   ├── auth_service.dart    # register / login / logout / Verfügbarkeit
 │   └── secure_storage_service.dart
@@ -173,9 +177,9 @@ Groq, OpenRouter, Ollama, LM Studio, Mistral, Together, Fireworks).
 | name, enabled, url, model, fallbackPriority, Links, Logo | PocketBase-Collection `ai_providers` |
 | API-Key | `flutter_secure_storage`, Schlüssel `ai_provider_<userId>_<providerId>` |
 
-Der API-Key verlässt das Gerät nie: `AiProvidersService` entfernt `api_key` aus
-jeder Anfrage und liest ihn aus dem Secure Storage zurück. Der Key liegt also
-weder in der Datenbank noch in Backups oder Server-Logs.
+Der API-Key verlässt das Gerät nie: der Sync-Dienst entfernt `api_key` aus jeder
+Anfrage, der Server verwirft es zusätzlich, und der Key selbst liegt im Secure
+Storage — also weder in der Datenbank noch in Backups oder Server-Logs.
 
 ### API Rules für die Collection `ai_providers`
 
@@ -195,24 +199,39 @@ Felder: `user` (Relation → `users`, required), `name` (text, required),
 > Ein Feld `api_key` wird auf dem Server **nicht** benötigt — der Key liegt nur
 > auf dem Gerät.
 
-### Gemeinsame Liste mit der Webseite
+### Den Katalog pflegt ein Administrator
+
+Die Anbieterdefinitionen liegen in einem gemeinsamen Katalog auf dem Server
+(`pb_data/ai-config/catalogue.json`); hinzufügen, ändern und löschen darf sie
+**nur ein PocketBase-Superuser**. Ein normaler Benutzer kann Einträge ein- und
+ausschalten und seine eigenen API-Keys hinterlegen — mehr nicht.
 
 Dieselbe Liste gibt es im Browser unter
-`https://app.devhorizon.online/ai-providers/`. PocketBase liefert diese Seite
-selbst aus, also derselbe Origin: Anmeldung, Registrierung, Abmelden sowie
-Anbieter hinzufügen, bearbeiten, aktivieren und löschen.
+`https://app.devhorizon.online/ai-providers/` (PocketBase liefert die Seite
+selbst aus, also derselbe Origin). Dort setzt ein Administrator das Häkchen
+„Вход администратора (superuser)" und pflegt den Katalog; ein normales Konto
+bekommt nur die Schalter.
 
-Der Schalter **Синхронизация с сервером** im App-Bildschirm stellt beide Seiten
-auf eine gemeinsame JSON-Datei um: `pb_data/ai-config/<userId>.json`.
+Beim Synchronisieren werden nur die Einträge bearbeitet, die der Benutzer
+**ausgeschaltet** hat:
 
-| Schalter | Wo die Liste liegt |
+| Situation | Ergebnis |
 |---|---|
-| aus (Standard) | Collection `ai_providers` des Kontos |
-| an | gemeinsame JSON-Datei — Telefon und Webseite sehen dieselbe Liste |
+| noch im Katalog | bleibt, und die frische URL / das Modell wird übernommen |
+| `status: dead` | wird entfernt — die Markierung, dass der Anbieter nicht mehr läuft |
+| nicht mehr im Katalog | wird entfernt |
 
-Beim Einschalten wird die aktuelle Liste hochgeladen, wenn die Datei noch leer
-ist. API-Keys werden nie hochgeladen: sie bleiben in `flutter_secure_storage` auf
-dem Gerät, und der Server verwirft ein `api_key`-Feld auch bei manuellen Aufrufen.
+**Eingeschaltete Einträge werden nie angefasst**: URL, Modell und Key bleiben
+so, wie der Benutzer sie hinterlassen hat — auch wenn der Katalog sie als tot
+markiert.
+
+API-Keys erreichen den Server nie: sie liegen in `flutter_secure_storage` auf
+dem Gerät, und der Server verwirft ein `api_key`-Feld auch bei manuellen
+Aufrufen.
+
+Die **E-Mail** der letzten erfolgreichen Anmeldung wird gemerkt und
+vorausgefüllt; das Passwort speichert die App nicht — das übernimmt der
+Passwortmanager von Android über die Autofill-Hinweise.
 
 ## Kompilieren
 
@@ -246,6 +265,7 @@ kotlin.incremental.useClasspathSnapshot=false
 | `pocketbase.service` | Referenz-Unit für die manuelle Installation |
 | `create-ai-providers-migration.js` | Migration, die die Collection `ai_providers` erstellt |
 | `tighten-users-list-rule.js` | Migration, die das Leak bei leerem `q` in der `users`-List-Regel schließt |
+| `catalogue.json` | Startkatalog der Anbieter (10 Einträge, alle `active`) |
 | `pb_hooks/` | die `/api/ai-config`-Routen und ihr Logikmodul |
 | `pb_public/ai-providers/` | die Webseite unter `/ai-providers/` |
 | `README.md` | Schritt-für-Schritt-Anleitung |
@@ -258,6 +278,7 @@ cp deploy/tighten-users-list-rule.js \
    ~/pocketbase/pb_migrations/1791463100_tighten_users_list_rule.js
 cp -r deploy/pb_hooks/*  ~/pocketbase/pb_hooks/
 cp -r deploy/pb_public/* ~/pocketbase/pb_public/
+cp deploy/catalogue.json ~/pocketbase/pb_data/ai-config/catalogue.json
 sudo systemctl restart pocketbase
 ```
 

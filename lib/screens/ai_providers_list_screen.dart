@@ -8,6 +8,10 @@ import '../models/ai_provider.dart';
 import '../providers/ai_providers_provider.dart';
 import '../providers/auth_provider.dart';
 
+/// The provider catalogue comes from the server and is maintained by a
+/// PocketBase superuser. A regular user can only switch entries on and off and
+/// store their own API keys on the device, so this screen has no add, edit or
+/// delete for provider definitions.
 class AiProvidersListScreen extends ConsumerStatefulWidget {
   const AiProvidersListScreen({super.key});
 
@@ -37,28 +41,22 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('AI-провайдеры'),
-        actions: [
+        actions: <Widget>[
           IconButton(
             tooltip: 'Обновить',
             icon: const Icon(Icons.refresh),
-            onPressed: () =>
-                ref.read(aiProvidersProvider.notifier).refresh(),
+            onPressed: () => ref.read(aiProvidersProvider.notifier).refresh(),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showEditor(context, null),
-        icon: const Icon(Icons.add),
-        label: const Text('Добавить провайдера'),
       ),
       body: SafeArea(
         child: Column(
           children: <Widget>[
-            _SyncCard(
+            _CatalogueCard(
               state: state,
-              onToggle: (bool value) =>
-                  ref.read(aiProvidersProvider.notifier).setSyncEnabled(value),
               onSyncNow: () => ref.read(aiProvidersProvider.notifier).syncNow(),
+              onToggleSync: (bool value) =>
+                  ref.read(aiProvidersProvider.notifier).setSyncEnabled(value),
             ),
             Expanded(
               child: state.isLoading && state.items.isEmpty
@@ -68,7 +66,8 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
                           child: Padding(
                             padding: EdgeInsets.all(24),
                             child: Text(
-                              'Список пуст. Нажмите «Добавить провайдера» для добавления.',
+                              'Список пуст. Каталог провайдеров заполняет '
+                              'администратор.',
                               textAlign: TextAlign.center,
                             ),
                           ),
@@ -81,11 +80,10 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
                             final provider = state.items[index];
                             return _ProviderCard(
                               provider: provider,
-                              onEdit: () => _showEditor(context, provider),
-                              onDelete: () => _confirmDelete(context, provider),
                               onToggle: (v) => ref
                                   .read(aiProvidersProvider.notifier)
                                   .toggle(provider.id, v),
+                              onEditKey: () => _showApiKeyDialog(provider),
                             );
                           },
                         ),
@@ -96,62 +94,116 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
     );
   }
 
-  Future<void> _showEditor(BuildContext context, AiProvider? provider) async {
-    await showModalBottomSheet(
+  Future<void> _showApiKeyDialog(AiProvider provider) async {
+    final saved = await showDialog<String>(
       context: context,
-      isScrollControlled: true,
-      builder: (ctx) => _ProviderEditorSheet(provider: provider),
+      builder: (_) => _ApiKeyDialog(provider: provider),
     );
-  }
 
-  Future<void> _confirmDelete(BuildContext context, AiProvider provider) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Удалить провайдера?'),
-        content: Text('Будет удалён: ${provider.name}'),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
+    if (saved == null) return;
+    await ref.read(aiProvidersProvider.notifier).setApiKey(provider.id, saved);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('API-ключ сохранён на устройстве')),
     );
-    if (confirmed != true) return;
-    try {
-      await ref.read(aiProvidersProvider.notifier).delete(provider.id);
-      if (!mounted) return;
-      if (!mounted) return;
-      ScaffoldMessenger.of(this.context).showSnackBar(
-        const SnackBar(content: Text('Провайдер удалён')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(this.context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
-      );
-    }
   }
 }
 
-/// Explains and controls where the list lives: the account's PocketBase
-/// collection, or the shared JSON file that also backs the web page at
-/// https://app.devhorizon.online/ai-providers/
-class _SyncCard extends StatelessWidget {
-  const _SyncCard({
+/// Lets the user enter their own API key for a catalogue entry.
+///
+/// A stateful widget on purpose: it owns the controller, so the controller
+/// cannot outlive the closing animation of the dialog.
+class _ApiKeyDialog extends StatefulWidget {
+  const _ApiKeyDialog({required this.provider});
+
+  final AiProvider provider;
+
+  @override
+  State<_ApiKeyDialog> createState() => _ApiKeyDialogState();
+}
+
+class _ApiKeyDialogState extends State<_ApiKeyDialog> {
+  late final TextEditingController _controller;
+  bool _obscure = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.provider.apiKey ?? '');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = widget.provider;
+
+    return AlertDialog(
+      title: Text(provider.name),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _InfoLine(label: 'URL', value: provider.url),
+            _InfoLine(label: 'Model', value: provider.model),
+            _InfoLine(
+              label: 'Приоритет',
+              value: provider.fallbackPriority.toString(),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              obscureText: _obscure,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'API Key',
+                helperText: 'Хранится только на этом устройстве',
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscure ? Icons.visibility : Icons.visibility_off,
+                  ),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Сам провайдер и его адрес задаются администратором.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Сохранить'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Explains where the list comes from and offers the manual refresh.
+class _CatalogueCard extends StatelessWidget {
+  const _CatalogueCard({
     required this.state,
-    required this.onToggle,
     required this.onSyncNow,
+    required this.onToggleSync,
   });
 
   final AiProvidersState state;
-  final ValueChanged<bool> onToggle;
   final VoidCallback onSyncNow;
+  final ValueChanged<bool> onToggleSync;
 
   @override
   Widget build(BuildContext context) {
@@ -159,61 +211,68 @@ class _SyncCard extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SwitchListTile(
-            value: state.syncEnabled,
-            onChanged: onToggle,
-            title: const Text('Синхронизация с сервером'),
-            subtitle: Text(_subtitle()),
-          ),
-          if (state.syncEnabled)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Список общий с веб-страницей app.devhorizon.online. '
-                    'API-ключи остаются на этом устройстве и на сервер не отправляются.',
-                    style: theme.textTheme.bodySmall,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(Icons.cloud_sync, color: theme.colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Каталог провайдеров ведёт администратор',
+                    style: theme.textTheme.titleSmall,
                   ),
-                  Wrap(
-                    spacing: 8,
-                    children: <Widget>[
-                      TextButton.icon(
-                        onPressed: onSyncNow,
-                        icon: const Icon(Icons.sync),
-                        label: const Text('Синхронизировать сейчас'),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => launchUrl(
-                          Uri.parse('${AppConfig.baseUrl}/ai-providers/'),
-                          mode: LaunchMode.externalApplication,
-                        ),
-                        icon: const Icon(Icons.open_in_new),
-                        label: const Text('Веб-версия'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                ),
+                Switch(value: state.syncEnabled, onChanged: onToggleSync),
+              ],
             ),
-        ],
+            Text(
+              state.syncEnabled
+                  ? 'Выключенные провайдеры сверяются с каталогом: если '
+                      'провайдер помечен как неработающий, он убирается из '
+                      'списка. Включённые не трогаются.'
+                  : 'Синхронизация выключена: показан последний сохранённый '
+                      'список, изменения с сервера не подхватываются.',
+              style: theme.textTheme.bodySmall,
+            ),
+            if (state.syncEnabled && state.syncedAt != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Каталог обновлён: ${_formatTime(state.syncedAt!)}',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            Wrap(
+              spacing: 8,
+              children: <Widget>[
+                TextButton.icon(
+                  onPressed: state.syncEnabled ? onSyncNow : null,
+                  icon: const Icon(Icons.sync),
+                  label: const Text('Синхронизировать сейчас'),
+                ),
+                TextButton.icon(
+                  onPressed: () => launchUrl(
+                    Uri.parse('${AppConfig.baseUrl}/ai-providers/'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('Веб-версия'),
+                ),
+              ],
+            ),
+            Text(
+              'API-ключи остаются на этом устройстве и на сервер не '
+              'отправляются.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
       ),
     );
-  }
-
-  String _subtitle() {
-    if (!state.syncEnabled) {
-      return 'Выключена. Список хранится в вашем аккаунте.';
-    }
-    final at = state.syncedAt;
-    if (at == null) {
-      return 'Включена. На сервере ещё нет сохранённой версии.';
-    }
-    return 'Включена. Обновлено: ${_formatTime(at)}';
   }
 
   String _formatTime(DateTime value) {
@@ -226,61 +285,85 @@ class _SyncCard extends StatelessWidget {
 class _ProviderCard extends StatelessWidget {
   const _ProviderCard({
     required this.provider,
-    required this.onEdit,
-    required this.onDelete,
     required this.onToggle,
+    required this.onEditKey,
   });
 
   final AiProvider provider;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
   final ValueChanged<bool> onToggle;
+  final VoidCallback onEditKey;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+          children: <Widget>[
             Row(
-              children: [
+              children: <Widget>[
                 _Logo(provider: provider, size: 36),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        provider.name,
-                        style: Theme.of(context).textTheme.titleMedium,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Flexible(
+                            child: Text(
+                              provider.name,
+                              style: theme.textTheme.titleMedium,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (provider.isDead)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.errorContainer,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                'не работает',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onErrorContainer,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       Text(
                         'Приоритет: ${provider.fallbackPriority}',
-                        style: Theme.of(context).textTheme.bodySmall,
+                        style: theme.textTheme.bodySmall,
                       ),
                     ],
                   ),
                 ),
-                Switch(
-                  value: provider.enabled,
-                  onChanged: onToggle,
-                ),
+                Switch(value: provider.enabled, onChanged: onToggle),
               ],
             ),
             const SizedBox(height: 8),
-            _InfoRow(label: 'URL', value: provider.url),
-            _InfoRow(label: 'Model', value: provider.model),
-            _InfoRow(
+            _InfoLine(label: 'URL', value: provider.url),
+            _InfoLine(label: 'Model', value: provider.model),
+            _InfoLine(
               label: 'API Key',
-              value: provider.apiKey?.isNotEmpty == true ? '••••••••' : '(не задан)',
+              value: provider.apiKey?.isNotEmpty == true
+                  ? '••••••••'
+                  : '(не задан)',
             ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: [
+              children: <Widget>[
                 if (_hasUrl(provider.loginUrl))
                   TextButton.icon(
                     onPressed: () => _launchUrl(provider.loginUrl!),
@@ -293,21 +376,10 @@ class _ProviderCard extends StatelessWidget {
                     icon: const Icon(Icons.vpn_key),
                     label: const Text('Получить API-ключ'),
                   ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
                 TextButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit),
-                  label: const Text('Редактировать'),
-                ),
-                TextButton.icon(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Удалить'),
+                  onPressed: onEditKey,
+                  icon: const Icon(Icons.key),
+                  label: const Text('Ввести ключ'),
                 ),
               ],
             ),
@@ -318,14 +390,17 @@ class _ProviderCard extends StatelessWidget {
   }
 
   bool _hasUrl(String? u) => u != null && u.trim().isNotEmpty;
+
   Future<void> _launchUrl(String url) async {
-    final uri = Uri.parse(url);
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -336,15 +411,14 @@ class _InfoRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           SizedBox(
             width: 90,
             child: Text(
               label,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
           ),
           Expanded(
@@ -378,9 +452,8 @@ class _Logo extends StatelessWidget {
       );
     }
     if (provider.logoAsset != null && provider.logoAsset!.trim().isNotEmpty) {
-      final asset = 'assets/logos/${provider.logoAsset}.svg';
       return SvgPicture.asset(
-        asset,
+        'assets/logos/${provider.logoAsset}.svg',
         width: size,
         height: size,
         fit: BoxFit.contain,
@@ -400,257 +473,5 @@ class _Logo extends StatelessWidget {
       ),
       child: const Icon(Icons.smart_toy_outlined),
     );
-  }
-}
-
-class _ProviderEditorSheet extends ConsumerStatefulWidget {
-  const _ProviderEditorSheet({this.provider});
-
-  final AiProvider? provider;
-
-  @override
-  ConsumerState<_ProviderEditorSheet> createState() =>
-      _ProviderEditorSheetState();
-}
-
-class _ProviderEditorSheetState extends ConsumerState<_ProviderEditorSheet> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
-  final _urlCtrl = TextEditingController();
-  final _modelCtrl = TextEditingController();
-  final _apiKeyCtrl = TextEditingController();
-  final _priorityCtrl = TextEditingController();
-  final _loginUrlCtrl = TextEditingController();
-  final _getApiKeyCtrl = TextEditingController();
-  final _logoUrlCtrl = TextEditingController();
-  final _logoAssetCtrl = TextEditingController();
-  bool _enabled = false;
-  bool _obscureApiKey = true;
-
-  @override
-  void initState() {
-    super.initState();
-    final p = widget.provider;
-    if (p != null) {
-      _nameCtrl.text = p.name;
-      _urlCtrl.text = p.url;
-      _modelCtrl.text = p.model;
-      _apiKeyCtrl.text = p.apiKey ?? '';
-      _priorityCtrl.text = p.fallbackPriority.toString();
-      _loginUrlCtrl.text = p.loginUrl ?? '';
-      _getApiKeyCtrl.text = p.getApiKeyUrl ?? '';
-      _logoUrlCtrl.text = p.logoUrl ?? '';
-      _logoAssetCtrl.text = p.logoAsset ?? '';
-      _enabled = p.enabled;
-    }
-  }
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _urlCtrl.dispose();
-    _modelCtrl.dispose();
-    _apiKeyCtrl.dispose();
-    _priorityCtrl.dispose();
-    _loginUrlCtrl.dispose();
-    _getApiKeyCtrl.dispose();
-    _logoUrlCtrl.dispose();
-    _logoAssetCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isEditing = widget.provider != null;
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        left: 16,
-        right: 16,
-        top: 16,
-      ),
-      child: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                isEditing ? 'Редактировать провайдера' : 'Добавить провайдера',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: 'Название'),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Обязательное поле' : null,
-              ),
-              const SizedBox(height: 8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Включён'),
-                value: _enabled,
-                onChanged: (v) => setState(() => _enabled = v),
-              ),
-              TextFormField(
-                controller: _urlCtrl,
-                decoration: const InputDecoration(labelText: 'URL'),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Обязательное поле' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _modelCtrl,
-                decoration: const InputDecoration(labelText: 'Model'),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Обязательное поле' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _apiKeyCtrl,
-                obscureText: _obscureApiKey,
-                decoration: InputDecoration(
-                  labelText: 'API Key',
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureApiKey ? Icons.visibility : Icons.visibility_off,
-                    ),
-                    onPressed: () =>
-                        setState(() => _obscureApiKey = !_obscureApiKey),
-                  ),
-                ),
-                validator: (v) {
-                  if (isEditing && (v == null || v.isEmpty)) return null;
-                  if (!isEditing && (v == null || v.trim().isEmpty)) {
-                    return 'Обязательное поле';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _priorityCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Приоритет (fallback)'),
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Обязательное поле';
-                  final n = int.tryParse(v);
-                  if (n == null || n < 0) return 'Минимум 0';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _loginUrlCtrl,
-                decoration: const InputDecoration(labelText: 'Страница логина (URL)'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _getApiKeyCtrl,
-                decoration: const InputDecoration(labelText: 'Получить API-ключ (URL)'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _logoUrlCtrl,
-                decoration: const InputDecoration(labelText: 'logoUrl (ссылка на логотип)'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _logoAssetCtrl,
-                decoration: const InputDecoration(labelText: 'logoAsset (имя файла без .svg) из assets/logos'),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _save,
-                icon: const Icon(Icons.save),
-                label: const Text('Сохранить'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
-    final notifier = ref.read(aiProvidersProvider.notifier);
-    final p = widget.provider;
-    final priority = int.parse(_priorityCtrl.text.trim());
-
-    if (p == null) {
-      final newProvider = AiProvider(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: _nameCtrl.text.trim(),
-        enabled: _enabled,
-        url: _urlCtrl.text.trim(),
-        model: _modelCtrl.text.trim(),
-        apiKey: _apiKeyCtrl.text.trim(),
-        fallbackPriority: priority,
-        loginUrl: _loginUrlCtrl.text.trim().isEmpty
-            ? null
-            : _loginUrlCtrl.text.trim(),
-        getApiKeyUrl: _getApiKeyCtrl.text.trim().isEmpty
-            ? null
-            : _getApiKeyCtrl.text.trim(),
-        logoUrl: _logoUrlCtrl.text.trim().isEmpty
-            ? null
-            : _logoUrlCtrl.text.trim(),
-        logoAsset: _logoAssetCtrl.text.trim().isEmpty
-            ? null
-            : _logoAssetCtrl.text.trim(),
-        isPredefined: false,
-      );
-      try {
-        await notifier.add(newProvider);
-        if (mounted) Navigator.of(context).pop();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
-        }
-      }
-      return;
-    }
-
-    final changes = <String, dynamic>{
-      'name': _nameCtrl.text.trim(),
-      'enabled': _enabled,
-      'url': _urlCtrl.text.trim(),
-      'model': _modelCtrl.text.trim(),
-      'fallbackPriority': priority,
-    };
-    if (_apiKeyCtrl.text.trim().isNotEmpty) {
-      changes['api_key'] = _apiKeyCtrl.text.trim();
-    }
-    if (_loginUrlCtrl.text.trim().isEmpty) {
-      changes['loginUrl'] = null;
-    } else {
-      changes['loginUrl'] = _loginUrlCtrl.text.trim();
-    }
-    if (_getApiKeyCtrl.text.trim().isEmpty) {
-      changes['getApiKeyUrl'] = null;
-    } else {
-      changes['getApiKeyUrl'] = _getApiKeyCtrl.text.trim();
-    }
-    if (_logoUrlCtrl.text.trim().isEmpty) {
-      changes['logoUrl'] = null;
-    } else {
-      changes['logoUrl'] = _logoUrlCtrl.text.trim();
-    }
-    if (_logoAssetCtrl.text.trim().isEmpty) {
-      changes['logoAsset'] = null;
-    } else {
-      changes['logoAsset'] = _logoAssetCtrl.text.trim();
-    }
-
-    try {
-      await notifier.update(p.id, changes);
-      if (mounted) Navigator.of(context).pop();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
-      }
-    }
   }
 }

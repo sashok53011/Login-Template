@@ -1,37 +1,46 @@
 /// <reference path="../pb_data/types.d.ts" />
 ///
-/// Server-side config store for the "AI Providers list" — routes only.
+/// Routes only — the logic lives in ai-config-lib.js.
 ///
-/// The web page served at /ai-providers/ and the Android app both read and
-/// write the very same JSON file, one per user:
+/// The provider catalogue is owned by a PocketBase superuser. A regular user
+/// can read it, switch entries on and store their own API keys on the device;
+/// they cannot add, edit or delete providers.
 ///
-///   <pb_data>/ai-config/<userId>.json
+///   GET    /api/ai-config       -> { version, updated, canEdit, providers }
+///   PUT    /api/ai-config       -> superuser: replaces the catalogue;
+///                                  regular user: stores only the enabled flags
+///   DELETE /api/ai-config       -> regular user: clears their flags
+///   GET    /api/ai-config/meta  -> diagnostics
 ///
-/// Endpoints (all require a record auth token):
+/// IMPORTANT: PocketBase runs these handlers in an isolated context, so they
+/// cannot see this file's top-level scope: the module path is spelled out
+/// inside every handler on purpose.
 ///
-///   GET    /api/ai-config        -> { version, updated, providers: [...] }
-///   PUT    /api/ai-config        -> overwrites the file, returns what it saved
-///   DELETE /api/ai-config        -> resets the file to an empty config
-///   GET    /api/ai-config/meta   -> { dir, file, exists, bytes } (diagnostics)
-///
-/// IMPORTANT: PocketBase executes these handlers in an isolated context, so
-/// they cannot see this file's top-level scope. All logic lives in
-/// ai-config-lib.js and is required from inside each handler.
-///
-/// The API key is deliberately NOT part of the schema. It never leaves the
-/// device: the Android app keeps it in flutter_secure_storage and strips it
-/// before syncing, and the lib's sanitize() drops it even if it is sent.
+/// The API key is not part of the schema. The lib's sanitize() drops it even
+/// if one is sent by hand.
 
-/// The module path is spelled out inside every handler on purpose: these
-/// handlers cannot see this file's top-level scope.
+/// Allows both a record token and a superuser token.
+/// Defined inline in every route because a shared function would not be
+/// reachable from the handler context.
 routerAdd(
   "GET",
   "/api/ai-config",
   (e) => {
     const lib = require(__hooks + "/ai-config-lib.js");
-    return e.json(200, lib.readConfig(e.auth.id));
+    if (e.hasSuperuserAuth()) {
+      return e.json(200, lib.viewFor({}, true));
+    }
+    if (!e.auth) {
+      throw new UnauthorizedError();
+    }
+    return e.json(200, lib.viewFor(lib.readFlags(e.auth.id), false));
   },
-  $apis.requireAuth(),
+  (e) => {
+    if (e.auth || e.hasSuperuserAuth()) {
+      return e.next();
+    }
+    throw new UnauthorizedError();
+  },
 );
 
 routerAdd(
@@ -43,9 +52,26 @@ routerAdd(
     if (!body || typeof body !== "object") {
       throw new BadRequestError("Ожидается JSON-объект с полем providers.");
     }
-    return e.json(200, lib.writeConfig(e.auth.id, body));
+
+    if (e.hasSuperuserAuth()) {
+      const saved = lib.writeCatalogue(body);
+      return e.json(200, lib.viewFor({}, true));
+    }
+
+    if (!e.auth) {
+      throw new UnauthorizedError();
+    }
+
+    const catalogue = lib.readCatalogue();
+    lib.writeFlags(e.auth.id, body, catalogue);
+    return e.json(200, lib.viewFor(lib.readFlags(e.auth.id), false));
   },
-  $apis.requireAuth(),
+  (e) => {
+    if (e.auth || e.hasSuperuserAuth()) {
+      return e.next();
+    }
+    throw new UnauthorizedError();
+  },
 );
 
 routerAdd(
@@ -53,9 +79,18 @@ routerAdd(
   "/api/ai-config",
   (e) => {
     const lib = require(__hooks + "/ai-config-lib.js");
-    return e.json(200, lib.deleteConfig(e.auth.id));
+    if (e.auth) {
+      lib.clearFlags(e.auth.id);
+      return e.json(200, lib.viewFor({}, false));
+    }
+    throw new UnauthorizedError("Сбросить каталог может только суперпользователь.");
   },
-  $apis.requireAuth(),
+  (e) => {
+    if (e.auth || e.hasSuperuserAuth()) {
+      return e.next();
+    }
+    throw new UnauthorizedError();
+  },
 );
 
 routerAdd(
@@ -63,7 +98,13 @@ routerAdd(
   "/api/ai-config/meta",
   (e) => {
     const lib = require(__hooks + "/ai-config-lib.js");
-    return e.json(200, lib.meta(e.auth.id));
+    const isSuperuser = e.hasSuperuserAuth();
+    return e.json(200, lib.meta(e.auth ? e.auth.id : "", isSuperuser));
   },
-  $apis.requireAuth(),
+  (e) => {
+    if (e.auth || e.hasSuperuserAuth()) {
+      return e.next();
+    }
+    throw new UnauthorizedError();
+  },
 );

@@ -7,13 +7,19 @@ import 'ai_provider.dart';
 /// API keys stay on the device.
 class AiConfig {
   const AiConfig({
-    this.version = 1,
+    this.version = 2,
     this.updated,
+    this.canEdit = false,
     this.providers = const <AiProvider>[],
   });
 
   final int version;
   final DateTime? updated;
+
+  /// True only for a PocketBase superuser: provider definitions may then be
+  /// changed. The app never gets this, it only toggles entries on and off.
+  final bool canEdit;
+
   final List<AiProvider> providers;
 
   factory AiConfig.fromJson(Map<String, dynamic> json) {
@@ -27,8 +33,9 @@ class AiConfig {
       }
     }
     return AiConfig(
-      version: json['version'] is int ? json['version'] as int : 1,
+      version: json['version'] is int ? json['version'] as int : 2,
       updated: _parseDate(json['updated']),
+      canEdit: json['canEdit'] == true,
       providers: providers,
     );
   }

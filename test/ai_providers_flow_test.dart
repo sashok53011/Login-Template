@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:login_app/main.dart';
-import 'package:login_app/providers/ai_providers_provider.dart';
 import 'package:login_app/providers/auth_provider.dart';
 import 'package:login_app/services/api_client.dart';
 import 'package:login_app/services/secure_storage_service.dart';
@@ -17,6 +16,7 @@ class FakeStorage extends SecureStorageService {
   String? token;
   Map<String, String?> data = <String, String?>{};
   final Map<String, String> apiKeys = <String, String>{};
+  final Map<String, String> values = <String, String>{};
 
   @override
   Future<void> saveToken(String value) async => token = value;
@@ -70,8 +70,6 @@ class FakeStorage extends SecureStorageService {
     apiKeys.remove('$userId/$providerId');
   }
 
-  final Map<String, String> values = <String, String>{};
-
   @override
   Future<String?> readValue(String key) async => values[key];
 
@@ -86,26 +84,19 @@ class FakeStorage extends SecureStorageService {
   }
 }
 
-/// PocketBase double covering login plus the `ai_providers` collection.
+/// PocketBase double: login plus the /api/ai-config catalogue endpoint.
+///
+/// Like the real hook, PUT stores **only** the enabled flags and answers with
+/// the merged view, so a test cannot accidentally pass while the app believes
+/// it may rewrite provider definitions.
 class FakeAiBackend implements HttpClientAdapter {
-  FakeAiBackend(List<Map<String, dynamic>> seed) {
-    for (final item in seed) {
-      store[item['id'] as String] = Map<String, dynamic>.from(item);
-    }
-  }
+  FakeAiBackend(this.catalogue);
 
   static const String userId = 'id1234567890123';
-  static const String collection = 'ai_providers';
 
-  final Map<String, Map<String, dynamic>> store = <String, Map<String, dynamic>>{};
+  Map<String, dynamic> catalogue;
+  final List<Map<String, dynamic>> putBodies = <Map<String, dynamic>>[];
   final List<String> calls = <String>[];
-
-  /// Server-side shared config file backing /api/ai-config.
-  Map<String, dynamic> config = <String, dynamic>{
-    'version': 1,
-    'updated': '',
-    'providers': <dynamic>[],
-  };
 
   static ResponseBody _json(int status, Object? body) {
     return ResponseBody.fromString(
@@ -117,7 +108,9 @@ class FakeAiBackend implements HttpClientAdapter {
     );
   }
 
-  static Future<Map<String, dynamic>> _readBody(Stream<Uint8List>? stream) async {
+  static Future<Map<String, dynamic>> _readBody(
+    Stream<Uint8List>? stream,
+  ) async {
     if (stream == null) return <String, dynamic>{};
     final chunks = await stream.toList();
     final bytes = chunks.expand((Uint8List e) => e).toList();
@@ -152,90 +145,86 @@ class FakeAiBackend implements HttpClientAdapter {
       });
     }
 
-    if (!path.contains('/collections/$collection/')) {
-      if (path == '/api/ai-config') {
-        if (method == 'GET') {
-          return _json(200, config);
-        }
-        if (method == 'PUT') {
-          config = <String, dynamic>{
-            'version': 1,
-            'updated': '2026-10-12T20:00:00Z',
-            'providers': body['providers'] ?? <dynamic>[],
-          };
-          return _json(200, config);
-        }
+    if (path == '/api/ai-config') {
+      if (method == 'GET') {
+        return _json(200, catalogue);
       }
-      return _json(404, <String, dynamic>{'message': 'not found'});
-    }
-
-    if (method == 'GET') {
-      final items = store.values.toList();
-      return _json(200, <String, dynamic>{
-        'items': items,
-        'page': 1,
-        'perPage': 200,
-        'totalItems': items.length,
-        'totalPages': 1,
-      });
-    }
-
-    if (method == 'POST') {
-      final id = 'new${store.length + 1}';
-      final record = <String, dynamic>{...body, 'id': id};
-      if (body.containsKey('api_key')) {
-        // The field is not part of the schema; it must never reach the server.
-        return _json(400, <String, dynamic>{'message': 'unknown field api_key'});
+      if (method == 'PUT') {
+        putBodies.add(body);
+        return _json(200, _mergeFlags(body));
       }
-      store[id] = record;
-      return _json(200, record);
-    }
-
-    final id = path.split('/').last;
-
-    if (method == 'PATCH') {
-      if (body.containsKey('userId')) {
-        return _json(400, <String, dynamic>{'message': 'unknown field userId'});
-      }
-      final record = <String, dynamic>{...?store[id], ...body, 'id': id};
-      store[id] = record;
-      return _json(200, record);
-    }
-
-    if (method == 'DELETE') {
-      store.remove(id);
-      return _json(204, null);
     }
 
     return _json(404, <String, dynamic>{'message': 'not found'});
+  }
+
+  /// The server keeps only the flags and returns the catalogue merged with them.
+  Map<String, dynamic> _mergeFlags(Map<String, dynamic> body) {
+    final flags = <String, bool>{};
+    final sent = body['providers'];
+    if (sent is List) {
+      for (final item in sent) {
+        if (item is Map && item['id'] is String) {
+          flags[item['id'] as String] = item['enabled'] == true;
+        }
+      }
+    }
+
+    final providers = <dynamic>[];
+    for (final raw in (catalogue['providers'] as List<dynamic>)) {
+      final provider = Map<String, dynamic>.from(raw as Map);
+      final id = provider['id'] as String;
+      if (flags.containsKey(id)) {
+        provider['enabled'] = flags[id];
+      }
+      providers.add(provider);
+    }
+
+    catalogue = <String, dynamic>{
+      ...catalogue,
+      'updated': '2026-10-12T21:00:00Z',
+      'providers': providers,
+    };
+    return catalogue;
   }
 
   @override
   void close({bool force = false}) {}
 }
 
-Map<String, dynamic> _provider(
+Map<String, dynamic> _entry(
   String id,
   String name,
   int priority, {
   bool enabled = false,
+  String status = 'active',
+  String? url,
 }) {
   return <String, dynamic>{
     'id': id,
-    'user': FakeAiBackend.userId,
     'name': name,
     'enabled': enabled,
-    'url': 'https://api.$id.example/v1',
+    'url': url ?? 'https://api.$id.example/v1',
     'model': '$id-model',
     'fallbackPriority': priority,
     'loginUrl': 'https://$id.example/login',
     'getApiKeyUrl': 'https://$id.example/keys',
-    'isPredefined': false,
+    'logoUrl': '',
+    'logoAsset': '',
+    'status': status,
   };
 }
 
-/// Logs in through the real UI and opens the AI providers screen.
-Future<void> openProviders(
+Map<String, dynamic> _catalogue(List<Map<String, dynamic>> providers) {
+  return <String, dynamic>{
+    'version': 2,
+    'updated': '2026-10-12T20:00:00Z',
+    'canEdit': false,
+    'providers': providers,
+  };
+}
+
+Future<void> pumpApp(
   WidgetTester tester,
   FakeAiBackend backend,
   FakeStorage storage,
@@ -251,10 +240,19 @@ Future<void> openProviders(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// Logs in through the real UI and opens the AI providers screen.
+Future<void> openProviders(
+  WidgetTester tester,
+  FakeAiBackend backend,
+  FakeStorage storage,
+) async {
+  await pumpApp(tester, backend, storage);
 
   final fields = find.byType(TextFormField);
   await tester.enterText(fields.at(0), 'user@example.com');
-  await tester.enterText(fields.at(1), 'correct-horse');
+  await tester.enterText(fields.at(1), 'probe-password');
   await tester.pump(const Duration(milliseconds: 900));
   await tester.pumpAndSettle();
 
@@ -267,213 +265,175 @@ Future<void> openProviders(
   await tester.pumpAndSettle();
 }
 
+Finder switchOf(String providerName) => find.descendant(
+      of: find.widgetWithText(Card, providerName),
+      matching: find.byType(Switch),
+    );
+
 void main() {
-  testWidgets('home links to the AI providers list', (WidgetTester tester) async {
-    final backend = FakeAiBackend(<Map<String, dynamic>>[
-      _provider('p1', 'OpenAI', 1, enabled: true),
-      _provider('p2', 'Groq', 2),
-    ]);
+  testWidgets('the catalogue is shown without any admin controls',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[
+        _entry('openai', 'OpenAI', 1, enabled: true),
+        _entry('groq', 'Groq', 2),
+      ]),
+    );
 
     await openProviders(tester, backend, FakeStorage());
 
     expect(find.text('OpenAI'), findsOneWidget);
     expect(find.text('Groq'), findsOneWidget);
-  });
-
-  testWidgets('providers render with a switch, links and actions',
-      (WidgetTester tester) async {
-    final backend = FakeAiBackend(<Map<String, dynamic>>[
-      _provider('p1', 'OpenAI', 1, enabled: true),
-      _provider('p2', 'Groq', 2),
-    ]);
-
-    await openProviders(tester, backend, FakeStorage());
-
-    // Sorted by fallbackPriority.
-    expect(find.byType(Card), findsNWidgets(3));
-    // One sync switch plus one per provider.
+    // The sync switch plus one per provider.
     expect(find.byType(Switch), findsNWidgets(3));
-    expect(find.text('Синхронизация с сервером'), findsOneWidget);
-    expect(find.text('Приоритет: 1'), findsOneWidget);
-    expect(find.text('Добавить провайдера'), findsOneWidget);
-    expect(find.text('Редактировать'), findsNWidgets(2));
-    expect(find.text('Страница логина'), findsNWidgets(2));
-    expect(find.text('Получить API-ключ'), findsNWidgets(2));
-    // The API key is never printed, the card only shows a mask.
-    expect(find.text('••••••••'), findsNothing);
-    expect(find.text('(не задан)'), findsNWidgets(2));
+    expect(
+      find.text('Каталог провайдеров ведёт администратор'),
+      findsOneWidget,
+    );
+
+    // A regular user may not change provider definitions.
+    expect(find.text('Добавить провайдера'), findsNothing);
+    expect(find.text('Удалить'), findsNothing);
+    expect(find.text('Редактировать'), findsNothing);
   });
 
-  testWidgets('toggling the switch patches the record',
+  testWidgets('switching a provider on sends the choice to the server',
       (WidgetTester tester) async {
-    final backend = FakeAiBackend(<Map<String, dynamic>>[
-      _provider('p1', 'OpenAI', 1),
-    ]);
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[
+        _entry('openai', 'OpenAI', 1),
+        _entry('groq', 'Groq', 2),
+      ]),
+    );
 
     await openProviders(tester, backend, FakeStorage());
 
-    await tester.tap(
-      find.descendant(
-        of: find.widgetWithText(Card, 'OpenAI'),
-        matching: find.byType(Switch),
-      ),
-    );
+    final groq = switchOf('Groq');
+    await tester.ensureVisible(groq);
+    await tester.pumpAndSettle();
+    await tester.tap(groq);
     await tester.pumpAndSettle();
 
-    expect(
-      backend.calls,
-      contains('PATCH /api/collections/ai_providers/records/p1'),
-    );
-    expect(backend.store['p1']!['enabled'], true);
+    expect(backend.putBodies, isNotEmpty);
+    final sent = backend.putBodies.last['providers'] as List<dynamic>;
+    final flags = <String, bool>{
+      for (final item in sent)
+        (item as Map<String, dynamic>)['id'] as String: item['enabled'] == true,
+    };
+    expect(flags['groq'], isTrue);
+    expect(flags['openai'], isFalse);
   });
 
-  testWidgets('deleting asks for confirmation and removes the provider',
+  testWidgets('the API key stays on the device',
       (WidgetTester tester) async {
-    final backend = FakeAiBackend(<Map<String, dynamic>>[
-      _provider('p1', 'OpenAI', 1),
-      _provider('p2', 'Groq', 2),
-    ]);
-
-    await openProviders(tester, backend, FakeStorage());
-
-    await tester.tap(find.widgetWithText(TextButton, 'Удалить').first);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Удалить провайдера?'), findsOneWidget);
-    expect(find.text('Будет удалён: OpenAI'), findsOneWidget);
-
-    await tester.tap(find.widgetWithText(FilledButton, 'Удалить'));
-    await tester.pumpAndSettle();
-
-    expect(
-      backend.calls,
-      contains('DELETE /api/collections/ai_providers/records/p1'),
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[_entry('openai', 'OpenAI', 1)]),
     );
-    expect(find.text('OpenAI'), findsNothing);
-    expect(find.text('Groq'), findsOneWidget);
-  });
-
-  testWidgets('adding a provider sends it without the API key',
-      (WidgetTester tester) async {
-    final backend = FakeAiBackend(<Map<String, dynamic>>[
-      _provider('p1', 'OpenAI', 1),
-    ]);
     final storage = FakeStorage();
 
     await openProviders(tester, backend, storage);
 
-    await tester.tap(find.text('Добавить провайдера'));
+    final keyButton = find.widgetWithText(TextButton, 'Ввести ключ');
+    await tester.ensureVisible(keyButton);
+    await tester.pumpAndSettle();
+    await tester.tap(keyButton);
     await tester.pumpAndSettle();
 
-    final fields = find.byType(TextFormField);
-    await tester.enterText(fields.at(0), 'Мой провайдер');
-    await tester.enterText(fields.at(1), 'https://mine.example/v1');
-    await tester.enterText(fields.at(2), 'mine-model');
-    await tester.enterText(fields.at(3), 'super-secret');
-    await tester.enterText(fields.at(4), '3');
-    await tester.pumpAndSettle();
-
-    final save = find.widgetWithText(FilledButton, 'Сохранить');
-    await tester.ensureVisible(save);
-    await tester.pumpAndSettle();
-    await tester.tap(save);
+    await tester.enterText(find.byType(TextField).last, 'super-secret');
+    await tester.tap(find.widgetWithText(FilledButton, 'Сохранить'));
     await tester.pumpAndSettle();
 
     expect(
-      backend.calls,
-      contains('POST /api/collections/ai_providers/records'),
+      storage.apiKeys['${FakeAiBackend.userId}/openai'],
+      'super-secret',
     );
-    expect(find.text('Мой провайдер'), findsOneWidget);
-
-    // The secret stays on the device, never in PocketBase.
-    expect(
-      backend.store.values.any((Map<String, dynamic> r) =>
-          r.containsKey('api_key') || r.containsKey('apiKey')),
-      isFalse,
-    );
-    expect(storage.apiKeys.values, contains('super-secret'));
+    // Nothing that was sent to the server may contain the secret.
+    expect(jsonEncode(backend.putBodies), isNot(contains('super-secret')));
   });
 
-  testWidgets('editing keeps the stored API key masked',
+  testWidgets('a dead provider is dropped while off and kept while on',
       (WidgetTester tester) async {
-    final backend = FakeAiBackend(<Map<String, dynamic>>[
-      _provider('p1', 'OpenAI', 1),
-    ]);
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[
+        _entry('openai', 'OpenAI', 1, enabled: true),
+        _entry('ghost', 'Ghost', 2, status: 'dead'),
+        _entry('zombie', 'Zombie', 3, enabled: true, status: 'dead'),
+      ]),
+    );
+
+    await openProviders(tester, backend, FakeStorage());
+
+    expect(find.text('OpenAI'), findsOneWidget);
+    // Switched off and dead -> removed.
+    expect(find.text('Ghost'), findsNothing);
+    // Switched on -> never touched, even when dead, but flagged.
+    expect(find.text('Zombie'), findsOneWidget);
+    expect(find.text('не работает'), findsOneWidget);
+  });
+
+  testWidgets('off providers take the catalogue URL, on providers keep theirs',
+      (WidgetTester tester) async {
+    final storage = FakeStorage();
+    storage.values['ai_providers_snapshot_${FakeAiBackend.userId}'] = jsonEncode(
+      <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'openai',
+          'name': 'OpenAI',
+          'enabled': true,
+          'url': 'https://local.example/v1',
+          'model': 'local-model',
+          'fallbackPriority': 1,
+          'status': 'active',
+        },
+        <String, dynamic>{
+          'id': 'groq',
+          'name': 'Groq',
+          'enabled': false,
+          'url': 'https://stale.example/v1',
+          'model': 'stale-model',
+          'fallbackPriority': 2,
+          'status': 'active',
+        },
+      ],
+    );
+
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[
+        _entry('openai', 'OpenAI', 1, url: 'https://catalogue.example/v2'),
+        _entry('groq', 'Groq', 2, url: 'https://catalogue.example/v2'),
+      ]),
+    );
+
+    await openProviders(tester, backend, storage);
+
+    // Switched on: the local copy wins.
+    expect(find.text('https://local.example/v1'), findsOneWidget);
+    // Switched off: the administrator's fresh URL is taken.
+    expect(find.text('https://catalogue.example/v2'), findsOneWidget);
+    expect(find.text('https://stale.example/v1'), findsNothing);
+  });
+
+  testWidgets('the last email is remembered and prefilled',
+      (WidgetTester tester) async {
     final storage = FakeStorage()
-      ..apiKeys['${FakeAiBackend.userId}/p1'] = 'stored-key';
+      ..values['last_login_email'] = 'saved@example.com';
 
-    await openProviders(tester, backend, storage);
+    await pumpApp(tester, FakeAiBackend(_catalogue(<Map<String, dynamic>>[])), storage);
 
-    await tester.tap(find.widgetWithText(TextButton, 'Редактировать').first);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Редактировать провайдера'), findsOneWidget);
-
-    final save = find.widgetWithText(FilledButton, 'Сохранить');
-    await tester.ensureVisible(save);
-    await tester.pumpAndSettle();
-    await tester.tap(save);
-    await tester.pumpAndSettle();
-
-    expect(
-      backend.calls,
-      contains('PATCH /api/collections/ai_providers/records/p1'),
-    );
-    // Saving without touching the key must not send it to the server.
-    expect(backend.store['p1']!.containsKey('api_key'), isFalse);
-    expect(storage.apiKeys['${FakeAiBackend.userId}/p1'], 'stored-key');
+    final email = tester.widget<TextFormField>(find.byType(TextFormField).first);
+    expect(email.controller?.text, 'saved@example.com');
   });
 
-  testWidgets('enabling sync moves the list into the shared server file',
+  testWidgets('a successful login stores the email for next time',
       (WidgetTester tester) async {
-    final backend = FakeAiBackend(<Map<String, dynamic>>[
-      _provider('p1', 'OpenAI', 1),
-      _provider('p2', 'Groq', 2),
-    ]);
     final storage = FakeStorage();
 
-    await openProviders(tester, backend, storage);
-
-    // The synchronisation switch is the first one on the page.
-    await tester.tap(find.byType(Switch).first);
-    await tester.pumpAndSettle();
-
-    expect(backend.calls, contains('GET /api/ai-config'));
-    expect(backend.calls, contains('PUT /api/ai-config'));
-    expect((backend.config['providers'] as List<dynamic>).length, 2);
-    expect(storage.values[AiProvidersNotifier.syncFlagKey], 'true');
-
-    // Editing a provider now rewrites the shared file, not the collection.
-    final patchesBefore = backend.calls
-        .where((String c) => c.startsWith('PATCH'))
-        .length;
-
-    final groqSwitch = find.descendant(
-      of: find.widgetWithText(Card, 'Groq'),
-      matching: find.byType(Switch),
-    );
-    await tester.ensureVisible(groqSwitch);
-    await tester.pumpAndSettle();
-    await tester.tap(groqSwitch);
-    await tester.pumpAndSettle();
-
-    expect(
-      backend.calls.where((String c) => c.startsWith('PATCH')).length,
-      patchesBefore,
+    await openProviders(
+      tester,
+      FakeAiBackend(_catalogue(<Map<String, dynamic>>[])),
+      storage,
     );
 
-    final saved = backend.config['providers'] as List<dynamic>;
-    final groq = saved.firstWhere(
-      (dynamic p) => (p as Map<String, dynamic>)['id'] == 'p2',
-    ) as Map<String, dynamic>;
-    expect(groq['enabled'], true);
-
-    // Secrets never reach the file.
-    expect(
-      saved.every(
-        (dynamic p) => !(p as Map<String, dynamic>).containsKey('api_key'),
-      ),
-      isTrue,
-    );
+    expect(storage.values['last_login_email'], 'user@example.com');
   });
 }

@@ -16,6 +16,7 @@ class AiProvider extends Equatable {
     this.logoUrl,
     this.logoAsset,
     this.isPredefined = false,
+    this.status = 'active',
   });
 
   final String id;
@@ -32,6 +33,12 @@ class AiProvider extends Equatable {
   final String? logoAsset;
   final bool isPredefined;
 
+  /// `active` or `dead`. Only the catalogue owner (a PocketBase superuser)
+  /// sets this; a dead entry is removed from a user's list while it is off.
+  final String status;
+
+  bool get isDead => status == 'dead';
+
   factory AiProvider.fromJson(Map<String, dynamic> json) {
     return AiProvider(
       id: json['id']?.toString() ?? '',
@@ -47,6 +54,7 @@ class AiProvider extends Equatable {
       logoUrl: json['logoUrl']?.toString(),
       logoAsset: json['logoAsset']?.toString(),
       isPredefined: json['isPredefined'] == true,
+      status: json['status']?.toString() ?? 'active',
     );
   }
 
@@ -106,11 +114,10 @@ class AiProvider extends Equatable {
     };
   }
 
-  /// Payload for the shared server-side config file (`/api/ai-config`).
+  /// Payload for the shared server-side config (`/api/ai-config`).
   ///
-  /// Unlike [toJsonForPocketBase] it carries the `id` (the web page needs it to
-  /// match records) and never the owner, which the server derives from the auth
-  /// token. The API key is not included — it must not leave the device.
+  /// The server keeps only the `enabled` flags for a regular user and ignores
+  /// every other field, because the catalogue is owned by a superuser.
   Map<String, dynamic> toSyncJson() {
     return <String, dynamic>{
       'id': id,
@@ -124,6 +131,7 @@ class AiProvider extends Equatable {
       'logoUrl': logoUrl ?? '',
       'logoAsset': logoAsset ?? '',
       'isPredefined': isPredefined,
+      'status': status,
     };
   }
 
@@ -142,6 +150,7 @@ class AiProvider extends Equatable {
     String? logoUrl,
     String? logoAsset,
     bool? isPredefined,
+    String? status,
   }) {
     return AiProvider(
       id: id ?? this.id,
@@ -157,6 +166,7 @@ class AiProvider extends Equatable {
       logoUrl: logoUrl ?? this.logoUrl,
       logoAsset: logoAsset ?? this.logoAsset,
       isPredefined: isPredefined ?? this.isPredefined,
+      status: status ?? this.status,
     );
   }
 
@@ -175,5 +185,6 @@ class AiProvider extends Equatable {
         logoUrl,
         logoAsset,
         isPredefined,
+        status,
       ];
 }

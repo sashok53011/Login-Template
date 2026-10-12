@@ -1,32 +1,24 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/ai_config.dart';
 import '../models/ai_provider.dart';
 import '../services/ai_config_sync_service.dart';
-import '../services/ai_providers_service.dart';
 import '../services/secure_storage_service.dart';
 import 'auth_provider.dart';
-
-// The secure storage instance is shared with the auth layer so that a single
-// override in tests (and a single keystore on device) serves both.
-final aiProvidersServiceProvider = Provider<AiProvidersService>((ref) {
-  return AiProvidersService(
-    ref.watch(apiClientProvider),
-    ref.watch(secureStorageProvider),
-  );
-});
 
 final aiConfigSyncServiceProvider = Provider<AiConfigSyncService>((ref) {
   return AiConfigSyncService(ref.watch(apiClientProvider));
 });
 
-/// Where the provider list currently lives.
+/// Where the list currently comes from.
 enum AiProvidersSource {
-  /// The account's PocketBase collection (default behaviour).
-  account,
+  /// The administrator's catalogue on the server (normal operation).
+  catalogue,
 
-  /// The shared JSON file that also backs the web page at
-  /// https://app.devhorizon.online/ai-providers/
-  server,
+  /// A local snapshot of the last catalogue, used when synchronisation is off.
+  snapshot,
 }
 
 class AiProvidersState {
@@ -34,7 +26,7 @@ class AiProvidersState {
     this.items = const <AiProvider>[],
     this.isLoading = false,
     this.error,
-    this.source = AiProvidersSource.account,
+    this.source = AiProvidersSource.catalogue,
     this.syncedAt,
   });
 
@@ -43,10 +35,10 @@ class AiProvidersState {
   final String? error;
   final AiProvidersSource source;
 
-  /// When the server file was last written (server-side timestamp).
+  /// When the catalogue was last changed on the server.
   final DateTime? syncedAt;
 
-  bool get syncEnabled => source == AiProvidersSource.server;
+  bool get syncEnabled => source == AiProvidersSource.catalogue;
 
   AiProvidersState copyWith({
     List<AiProvider>? items,
@@ -66,24 +58,41 @@ class AiProvidersState {
   }
 }
 
+/// The provider catalogue is owned by a PocketBase superuser.
+///
+/// The app can only switch entries on and off and keep the user's API keys on
+/// the device, so there is no add / edit / delete here by design.
+///
+/// On every load the **disabled** entries are reconciled against the server:
+///
+/// * still in the catalogue  -> keep, and take the fresh URL / model from it;
+/// * `status: dead`          -> drop it (the "trace" that the provider died);
+/// * gone from the catalogue -> drop it.
+///
+/// Entries the user switched **on** are never touched: their URL, model and
+/// key stay exactly as the user left them.
 class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
   AiProvidersNotifier(this._ref) : super(const AiProvidersState());
 
-  /// Secure-storage key holding the sync switch.
+  /// Secure-storage key for the synchronisation switch.
   static const String syncFlagKey = 'ai_providers_sync_enabled';
+
+  static const String _snapshotPrefix = 'ai_providers_snapshot_';
 
   final Ref _ref;
 
-  AiProvidersService get _service => _ref.read(aiProvidersServiceProvider);
   AiConfigSyncService get _sync => _ref.read(aiConfigSyncServiceProvider);
   SecureStorageService get _storage => _ref.read(secureStorageProvider);
 
-  String? get _userId {
-    final auth = _ref.read(authProvider);
-    return auth.user?.id;
+  String? get _userId => _ref.read(authProvider).user?.id;
+
+  /// Synchronisation is on by default: the catalogue is the only place provider
+  /// definitions come from.
+  Future<bool> _isSyncEnabled() async {
+    final stored = await _storage.readValue(syncFlagKey);
+    return stored == null ? true : stored == 'true';
   }
 
-  /// Loads the list from whichever store the switch points at.
   Future<void> load() async {
     final userId = _userId;
     if (userId == null) {
@@ -93,26 +102,30 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
 
     state = state.copyWith(isLoading: true, error: null);
 
-    if (await _isSyncEnabled()) {
-      try {
-        await _pullFromServer(userId);
-      } catch (e) {
-        state = state.copyWith(isLoading: false, error: e.toString());
-      }
+    if (!await _isSyncEnabled()) {
+      state = state.copyWith(
+        items: await _readSnapshot(userId),
+        isLoading: false,
+        source: AiProvidersSource.snapshot,
+        clearSyncedAt: true,
+      );
       return;
     }
 
     try {
-      final list = await _service.list(userId: userId);
+      final AiConfig view = await _sync.fetch();
+      // The reconciliation baseline is the last known list, not the (possibly
+      // empty) in-memory state: an entry switched on earlier must keep its
+      // local URL and key across restarts.
+      final local = await _readSnapshot(userId);
+      final items = await _reconcile(userId, local, view.providers);
       state = state.copyWith(
-        items: list,
+        items: items,
         isLoading: false,
-        source: AiProvidersSource.account,
-        clearSyncedAt: true,
+        source: AiProvidersSource.catalogue,
+        syncedAt: view.updated,
       );
-      if (list.isEmpty) {
-        await _ensurePredefined(userId);
-      }
+      await _saveSnapshot(userId, items);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -120,75 +133,184 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
 
   Future<void> refresh() => load();
 
-  // ------------------------------------------------------------ sync switch
+  /// Manual "sync now" (only meaningful while synchronisation is on).
+  Future<void> syncNow() async {
+    if (!state.syncEnabled) return;
+    await load();
+  }
 
-  Future<bool> _isSyncEnabled() async =>
-      await _storage.readValue(syncFlagKey) == 'true';
-
-  /// Turns the server-file synchronisation on or off.
-  ///
-  /// Switching on downloads the shared config. When that file is still empty
-  /// the providers configured here are uploaded instead, so the web page and
-  /// the phone start from one list.
   Future<void> setSyncEnabled(bool enabled) async {
+    if (_userId == null) return;
+    await _storage.writeValue(syncFlagKey, enabled ? 'true' : 'false');
+    state = state.copyWith(
+      source:
+          enabled ? AiProvidersSource.catalogue : AiProvidersSource.snapshot,
+    );
+    await load();
+  }
+
+  /// Switches one catalogue entry on or off and stores the choice server-side.
+  Future<void> toggle(String id, bool enabled) async {
     final userId = _userId;
     if (userId == null) return;
 
+    final items = state.items
+        .map((p) => p.id == id ? p.copyWith(enabled: enabled) : p)
+        .toList();
+    state = state.copyWith(items: items);
+
+    if (!state.syncEnabled) {
+      await _saveSnapshot(userId, items);
+      return;
+    }
+
     state = state.copyWith(isLoading: true, error: null);
-
     try {
-      if (!enabled) {
-        await _storage.writeValue(syncFlagKey, 'false');
-        state = state.copyWith(source: AiProvidersSource.account);
-        await load();
-        return;
-      }
-
-      await _storage.writeValue(syncFlagKey, 'true');
-      state = state.copyWith(source: AiProvidersSource.server);
-
-      final config = await _sync.fetch();
-
-      if (config.providers.isEmpty && state.items.isNotEmpty) {
-        final pushed = await _sync.push(state.items);
-        state = state.copyWith(
-          items: await _attachKeys(userId, pushed.providers),
-          isLoading: false,
-          syncedAt: pushed.updated ?? DateTime.now(),
-        );
-        return;
-      }
-
+      final AiConfig view = await _sync.push(items);
+      final merged = await _reconcile(userId, items, view.providers);
       state = state.copyWith(
-        items: await _attachKeys(userId, config.providers),
+        items: merged,
         isLoading: false,
-        syncedAt: config.updated,
+        syncedAt: view.updated,
       );
+      await _saveSnapshot(userId, merged);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
-  /// Pushes the current list to the server file ("sync now").
-  Future<void> syncNow() async {
+  /// Stores the API key on the device. It is never sent to the server.
+  Future<void> setApiKey(String id, String apiKey) async {
     final userId = _userId;
-    if (userId == null || !state.syncEnabled) return;
+    if (userId == null) return;
 
-    state = state.copyWith(isLoading: true, error: null);
-    try {
-      final saved = await _sync.push(state.items);
-      state = state.copyWith(
-        items: await _attachKeys(userId, saved.providers),
-        isLoading: false,
-        syncedAt: saved.updated ?? DateTime.now(),
+    final value = apiKey.trim();
+    if (value.isEmpty) {
+      await _storage.deleteApiKey(userId: userId, providerId: id);
+    } else {
+      await _storage.writeApiKey(
+        userId: userId,
+        providerId: id,
+        apiKey: value,
       );
-    } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+    }
+
+    final items = state.items
+        .map(
+          (p) => p.id == id
+              ? p.copyWith(
+                  apiKey: value.isEmpty ? null : value,
+                  apiKeyExplicitlySet: true,
+                )
+              : p,
+        )
+        .toList();
+    state = state.copyWith(items: items);
+    await _saveSnapshot(userId, items);
+  }
+
+  // ------------------------------------------------------------- internals
+
+  /// Reconciles the list with the catalogue and attaches the keys that live on
+  /// the device.
+  ///
+  /// Only the entries the user switched **off** are processed:
+  ///
+  /// * still in the catalogue -> keep, taking the fresh URL / model from it;
+  /// * `status: dead`         -> drop (the trace that the provider died);
+  /// * gone from the catalogue -> drop.
+  ///
+  /// Entries switched **on** are never touched — their URL, model and key stay
+  /// exactly as the user left them, even when the catalogue marks them dead.
+  /// The user's own choice also wins over the server copy, so a device that
+  /// enabled something while offline does not lose it on the next sync.
+  Future<List<AiProvider>> _reconcile(
+    String userId,
+    List<AiProvider> local,
+    List<AiProvider> remote,
+  ) async {
+    final localById = <String, AiProvider>{
+      for (final p in local) p.id: p,
+    };
+
+    final result = <AiProvider>[];
+    final handled = <String>{};
+
+    for (final remoteProvider in remote) {
+      handled.add(remoteProvider.id);
+
+      final localCopy = localById[remoteProvider.id];
+      final isEnabled = localCopy?.enabled ?? remoteProvider.enabled;
+
+      if (!isEnabled && remoteProvider.isDead) {
+        continue;
+      }
+
+      var chosen = remoteProvider;
+      if (isEnabled && localCopy != null) {
+        chosen = localCopy;
+      }
+
+      final key = await _storage.readApiKey(
+        userId: userId,
+        providerId: chosen.id,
+      );
+      result.add(
+        chosen.copyWith(
+          enabled: isEnabled,
+          apiKey: key,
+          apiKeyExplicitlySet: true,
+        ),
+      );
+    }
+
+    // Switched-on entries are never dropped, not even when the catalogue no
+    // longer lists them.
+    for (final localCopy in local) {
+      if (!localCopy.enabled || handled.contains(localCopy.id)) {
+        continue;
+      }
+      final key = await _storage.readApiKey(
+        userId: userId,
+        providerId: localCopy.id,
+      );
+      result.add(
+        localCopy.copyWith(apiKey: key, apiKeyExplicitlySet: true),
+      );
+    }
+
+    result.sort(_compare);
+    return result;
+  }
+
+  Future<void> _saveSnapshot(String userId, List<AiProvider> items) async {
+    await _storage.writeValue(
+      _snapshotPrefix + userId,
+      jsonEncode(items.map((p) => p.toSyncJson()).toList()),
+    );
+  }
+
+  Future<List<AiProvider>> _readSnapshot(String userId) async {
+    final raw = await _storage.readValue(_snapshotPrefix + userId);
+    if (raw == null || raw.isEmpty) {
+      return const <AiProvider>[];
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const <AiProvider>[];
+      final items = <AiProvider>[];
+      for (final item in decoded) {
+        if (item is Map) {
+          items.add(AiProvider.fromJson(item.cast<String, dynamic>()));
+        }
+      }
+      return await _attachKeys(userId, items);
+    } catch (_) {
+      return const <AiProvider>[];
     }
   }
 
-  /// Reads API keys back from the device for freshly downloaded providers:
-  /// the server never sends them.
   Future<List<AiProvider>> _attachKeys(
     String userId,
     List<AiProvider> providers,
@@ -204,317 +326,6 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
     result.sort(_compare);
     return result;
   }
-
-  Future<void> _pullFromServer(String userId) async {
-    final config = await _sync.fetch();
-    state = state.copyWith(
-      items: await _attachKeys(userId, config.providers),
-      isLoading: false,
-      source: AiProvidersSource.server,
-      syncedAt: config.updated,
-    );
-  }
-
-  // -------------------------------------------------------------- mutations
-
-  Future<void> add(AiProvider provider) async {
-    final userId = _userId;
-    if (userId == null) return;
-    state = state.copyWith(isLoading: true, error: null);
-    try {
-      if (state.syncEnabled) {
-        final local = provider.copyWith(userId: userId);
-        await _storeKey(userId, local);
-        await _pushLocal(userId, <AiProvider>[...state.items, local]);
-        return;
-      }
-
-      final created = await _service.create(provider.copyWith(userId: userId));
-      final newList = <AiProvider>[...state.items, created]..sort(_compare);
-      state = state.copyWith(items: newList, isLoading: false);
-    } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
-      rethrow;
-    }
-  }
-
-  Future<void> update(String id, Map<String, dynamic> changes) async {
-    final userId = _userId;
-    state = state.copyWith(isLoading: true, error: null);
-    try {
-      if (state.syncEnabled) {
-        final index = state.items.indexWhere((p) => p.id == id);
-        if (index < 0) {
-          state = state.copyWith(isLoading: false);
-          return;
-        }
-
-        var updated = _applyChanges(state.items[index], changes);
-
-        final apiKey = changes['api_key'];
-        if (apiKey is String && apiKey.isNotEmpty && userId != null) {
-          await _storage.writeApiKey(
-            userId: userId,
-            providerId: id,
-            apiKey: apiKey,
-          );
-          updated = updated.copyWith(
-            apiKey: apiKey,
-            apiKeyExplicitlySet: true,
-          );
-        }
-
-        final list = <AiProvider>[...state.items]..[index] = updated;
-        await _pushLocal(userId, list);
-        return;
-      }
-
-      final effectiveChanges = Map<String, dynamic>.from(changes);
-      if (userId != null) {
-        effectiveChanges['userId'] = userId;
-      }
-      final updated = await _service.update(id, effectiveChanges);
-      final newList = state.items
-          .map((p) => p.id == id ? updated : p)
-          .toList()
-        ..sort(_compare);
-      state = state.copyWith(items: newList, isLoading: false);
-    } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
-      rethrow;
-    }
-  }
-
-  Future<void> toggle(String id, bool enabled) async {
-    await update(id, <String, dynamic>{'enabled': enabled});
-  }
-
-  Future<void> delete(String id) async {
-    final userId = _userId;
-    state = state.copyWith(isLoading: true, error: null);
-    try {
-      if (state.syncEnabled) {
-        if (userId != null) {
-          await _storage.deleteApiKey(userId: userId, providerId: id);
-        }
-        await _pushLocal(
-          userId,
-          state.items.where((p) => p.id != id).toList(),
-        );
-        return;
-      }
-
-      await _service.delete(id, userId: userId);
-      final newList = state.items.where((p) => p.id != id).toList()
-        ..sort(_compare);
-      state = state.copyWith(items: newList, isLoading: false);
-    } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
-      rethrow;
-    }
-  }
-
-  /// Sends the whole list to the shared file and adopts the server's answer.
-  Future<void> _pushLocal(String? userId, List<AiProvider> providers) async {
-    final sorted = <AiProvider>[...providers]..sort(_compare);
-    final saved = await _sync.push(sorted);
-    state = state.copyWith(
-      items: userId == null
-          ? saved.providers
-          : await _attachKeys(userId, saved.providers),
-      isLoading: false,
-      source: AiProvidersSource.server,
-      syncedAt: saved.updated ?? DateTime.now(),
-    );
-  }
-
-  Future<void> _storeKey(String userId, AiProvider provider) async {
-    final key = provider.apiKey;
-    if (key != null && key.isNotEmpty) {
-      await _storage.writeApiKey(
-        userId: userId,
-        providerId: provider.id,
-        apiKey: key,
-      );
-    }
-  }
-
-  /// Applies editor changes to a model without touching any store.
-  ///
-  /// Unlike [AiProvider.copyWith] this can also *clear* a field, which the
-  /// editor asks for by sending null.
-  AiProvider _applyChanges(AiProvider provider, Map<String, dynamic> changes) {
-    String? text(String key, String? current) {
-      if (!changes.containsKey(key)) return current;
-      final value = changes[key];
-      if (value == null) return null;
-      final trimmed = value.toString().trim();
-      return trimmed.isEmpty ? null : trimmed;
-    }
-
-    return AiProvider(
-      id: provider.id,
-      userId: provider.userId,
-      name: text('name', provider.name) ?? provider.name,
-      enabled: changes.containsKey('enabled')
-          ? changes['enabled'] == true
-          : provider.enabled,
-      url: text('url', provider.url) ?? provider.url,
-      model: text('model', provider.model) ?? provider.model,
-      apiKey: provider.apiKey,
-      fallbackPriority: changes['fallbackPriority'] is num
-          ? (changes['fallbackPriority'] as num).toInt()
-          : provider.fallbackPriority,
-      loginUrl: text('loginUrl', provider.loginUrl),
-      getApiKeyUrl: text('getApiKeyUrl', provider.getApiKeyUrl),
-      logoUrl: text('logoUrl', provider.logoUrl),
-      logoAsset: text('logoAsset', provider.logoAsset),
-      isPredefined: provider.isPredefined,
-    );
-  }
-
-  Future<void> _ensurePredefined(String userId) async {
-    final predefined = _predefinedList(userId);
-    for (final p in predefined) {
-      try {
-        await _service.create(p);
-      } catch (_) {}
-    }
-    await load();
-  }
-
-  List<AiProvider> _predefinedList(String userId) => <AiProvider>[
-        AiProvider(
-          id: 'openai',
-          userId: userId,
-          name: 'OpenAI',
-          enabled: false,
-          url: 'https://api.openai.com/v1',
-          model: 'gpt-4o-mini',
-          fallbackPriority: 1,
-          loginUrl: 'https://platform.openai.com/',
-          getApiKeyUrl: 'https://platform.openai.com/api-keys',
-          logoAsset: 'openai',
-          isPredefined: true,
-        ),
-        AiProvider(
-          id: 'anthropic',
-          userId: userId,
-          name: 'Anthropic (Claude)',
-          enabled: false,
-          url: 'https://api.anthropic.com',
-          model: 'claude-3.5-sonnet',
-          fallbackPriority: 2,
-          loginUrl: 'https://console.anthropic.com/',
-          getApiKeyUrl: 'https://console.anthropic.com/settings/keys',
-          logoAsset: 'anthropic',
-          isPredefined: true,
-        ),
-        AiProvider(
-          id: 'gemini',
-          userId: userId,
-          name: 'Google Gemini',
-          enabled: false,
-          url: 'https://generativelanguage.googleapis.com/v1beta/openai',
-          model: 'gemini-1.5-flash',
-          fallbackPriority: 3,
-          loginUrl: 'https://aistudio.google.com/',
-          getApiKeyUrl: 'https://aistudio.google.com/apikey',
-          logoAsset: 'google-gemini',
-          isPredefined: true,
-        ),
-        AiProvider(
-          id: 'groq',
-          userId: userId,
-          name: 'Groq',
-          enabled: false,
-          url: 'https://api.groq.com/openai/v1',
-          model: 'llama-3.1-8b-instant',
-          fallbackPriority: 4,
-          loginUrl: 'https://console.groq.com/',
-          getApiKeyUrl: 'https://console.groq.com/keys',
-          logoAsset: 'groq',
-          isPredefined: true,
-        ),
-        AiProvider(
-          id: 'openrouter',
-          userId: userId,
-          name: 'OpenRouter',
-          enabled: false,
-          url: 'https://openrouter.ai/api/v1',
-          model: 'openrouter/auto',
-          fallbackPriority: 5,
-          loginUrl: 'https://www.openrouter.ai/',
-          getApiKeyUrl: 'https://www.openrouter.ai/keys',
-          logoAsset: 'openrouter',
-          isPredefined: true,
-        ),
-        AiProvider(
-          id: 'ollama',
-          userId: userId,
-          name: 'Ollama',
-          enabled: false,
-          url: 'http://localhost:11434/v1',
-          model: 'llama3.2',
-          fallbackPriority: 6,
-          loginUrl: 'https://ollama.com/',
-          getApiKeyUrl: 'https://ollama.com/',
-          logoAsset: 'ollama',
-          isPredefined: true,
-        ),
-        AiProvider(
-          id: 'lmstudio',
-          userId: userId,
-          name: 'LM Studio',
-          enabled: false,
-          url: 'http://localhost:1234/v1',
-          model: 'local-model',
-          fallbackPriority: 7,
-          loginUrl: 'https://lmstudio.ai/',
-          getApiKeyUrl: 'https://lmstudio.ai/',
-          logoAsset: 'lmstudio',
-          isPredefined: true,
-        ),
-        AiProvider(
-          id: 'mistral',
-          userId: userId,
-          name: 'Mistral',
-          enabled: false,
-          url: 'https://api.mistral.ai/v1',
-          model: 'mistral-small-latest',
-          fallbackPriority: 8,
-          loginUrl: 'https://console.mistral.ai/',
-          getApiKeyUrl: 'https://console.mistral.ai/api-keys/',
-          logoAsset: 'mistral',
-          isPredefined: true,
-        ),
-        AiProvider(
-          id: 'together',
-          userId: userId,
-          name: 'Together AI',
-          enabled: false,
-          url: 'https://api.together.xyz/v1',
-          model: 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
-          fallbackPriority: 9,
-          loginUrl: 'https://www.together.ai/',
-          getApiKeyUrl: 'https://api.together.xyz/settings/api-keys',
-          logoAsset: 'together',
-          isPredefined: true,
-        ),
-        AiProvider(
-          id: 'fireworks',
-          userId: userId,
-          name: 'Fireworks AI',
-          enabled: false,
-          url: 'https://api.fireworks.ai/inference/v1',
-          model: 'accounts/fireworks/models/llama-v3p1-8b-instruct',
-          fallbackPriority: 10,
-          loginUrl: 'https://app.fireworks.ai/',
-          getApiKeyUrl: 'https://app.fireworks.ai/settings/users/api-keys',
-          logoAsset: 'fireworks',
-          isPredefined: true,
-        ),
-      ];
 
   int _compare(AiProvider a, AiProvider b) {
     if (a.fallbackPriority != b.fallbackPriority) {
