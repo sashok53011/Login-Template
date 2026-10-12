@@ -340,6 +340,122 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
     }
   }
 
+  /// Adds a provider as the current user's proposal.
+  ///
+  /// It is stored with `origin: user`, so it is reported to the administrator
+  /// together with the author's name and stays invisible to everyone else
+  /// until an administrator publishes it. No secret is sent: only the key
+  /// stays here, on the device.
+  Future<void> add(AiProvider provider) async {
+    final userId = _userId;
+    if (userId == null) return;
+
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final local = provider.copyWith(
+        enabled: true,
+        origin: 'user',
+        mine: true,
+      );
+      await _storeKey(userId, local);
+      await _pushLocal(userId, <AiProvider>[...state.items, local]);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+      rethrow;
+    }
+  }
+
+  /// Edits one of the user's own proposals.
+  ///
+  /// The server ignores definition changes for anything else, so the screen
+  /// only offers this for own entries.
+  Future<void> update(String id, Map<String, dynamic> changes) async {
+    final userId = _userId;
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final index = state.items.indexWhere((p) => p.id == id);
+      if (index < 0) {
+        state = state.copyWith(isLoading: false);
+        return;
+      }
+
+      var updated = _applyChanges(state.items[index], changes);
+
+      final apiKey = changes['api_key'];
+      if (apiKey is String && apiKey.isNotEmpty && userId != null) {
+        await _storage.writeApiKey(
+          userId: userId,
+          providerId: id,
+          apiKey: apiKey,
+        );
+        updated = updated.copyWith(apiKey: apiKey, apiKeyExplicitlySet: true);
+      }
+
+      final list = <AiProvider>[...state.items]..[index] = updated;
+      await _pushLocal(userId, list);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+      rethrow;
+    }
+  }
+
+  /// Removes one of the user's own proposals. An administrator's entry is
+  /// simply left in place by the server.
+  Future<void> delete(String id) async {
+    final userId = _userId;
+    if (userId == null) return;
+
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      await _storage.deleteApiKey(userId: userId, providerId: id);
+      await _pushLocal(
+        userId,
+        state.items.where((p) => p.id != id).toList(),
+      );
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+      rethrow;
+    }
+  }
+
+  /// Applies editor changes to a model without touching any store.
+  ///
+  /// Unlike [AiProvider.copyWith] this can also *clear* a field, which the
+  /// editor asks for by sending null.
+  AiProvider _applyChanges(AiProvider provider, Map<String, dynamic> changes) {
+    String? text(String key, String? current) {
+      if (!changes.containsKey(key)) return current;
+      final value = changes[key];
+      if (value == null) return null;
+      final trimmed = value.toString().trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
+    return AiProvider(
+      id: provider.id,
+      userId: provider.userId,
+      name: text('name', provider.name) ?? provider.name,
+      enabled: changes.containsKey('enabled')
+          ? changes['enabled'] == true
+          : provider.enabled,
+      url: text('url', provider.url) ?? provider.url,
+      model: text('model', provider.model) ?? provider.model,
+      apiKey: provider.apiKey,
+      fallbackPriority: changes['fallbackPriority'] is num
+          ? (changes['fallbackPriority'] as num).toInt()
+          : provider.fallbackPriority,
+      loginUrl: text('loginUrl', provider.loginUrl),
+      getApiKeyUrl: text('getApiKeyUrl', provider.getApiKeyUrl),
+      logoUrl: text('logoUrl', provider.logoUrl),
+      logoAsset: text('logoAsset', provider.logoAsset),
+      isPredefined: provider.isPredefined,
+      status: provider.status,
+      origin: provider.origin,
+      authorName: provider.authorName,
+      mine: provider.mine,
+    );
+  }
+
   // ------------------------------------------------------------- internals
 
   /// Reconciles the list with the catalogue and attaches the keys that live on
@@ -412,6 +528,43 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
 
     result.sort(_compare);
     return result;
+  }
+
+  /// Sends the whole list to the server and adopts its answer.
+  ///
+  /// For a regular user the server keeps the enable flags, turns the entries
+  /// that are new into that user's own proposals and drops anything they may
+  /// not change, so taking the response as the truth is the only safe way to
+  /// stay in step with what was actually stored.
+  Future<void> _pushLocal(String? userId, List<AiProvider> providers) async {
+    final sorted = <AiProvider>[...providers]..sort(_compare);
+    final saved = await _sync.push(sorted);
+
+    final merged = userId == null
+        ? saved.providers
+        : await _reconcile(userId, sorted, saved.providers);
+
+    state = state.copyWith(
+      items: merged,
+      isLoading: false,
+      source: AiProvidersSource.catalogue,
+      syncedAt: saved.updated ?? DateTime.now(),
+    );
+
+    if (userId != null) {
+      await _saveSnapshot(userId, merged);
+    }
+  }
+
+  Future<void> _storeKey(String userId, AiProvider provider) async {
+    final key = provider.apiKey;
+    if (key != null && key.isNotEmpty) {
+      await _storage.writeApiKey(
+        userId: userId,
+        providerId: provider.id,
+        apiKey: key,
+      );
+    }
   }
 
   Future<void> _saveSnapshot(String userId, List<AiProvider> items) async {

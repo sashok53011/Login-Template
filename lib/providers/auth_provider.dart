@@ -70,7 +70,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
         );
         return;
       }
+
+      // The stored user matters as much as the token: its id is what the
+      // per-user API calls are built from.
+      final user = await _service.restoreUser();
       state = state.copyWith(
+        user: user,
         isLoading: false,
         isLoggedIn: true,
         displayName: await _service.getDisplayName(),

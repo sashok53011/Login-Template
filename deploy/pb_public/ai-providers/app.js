@@ -392,6 +392,17 @@ function providerCard(provider) {
   const body = document.createElement("div");
   const title = document.createElement("h3");
   title.textContent = provider.name;
+
+  if (provider.origin === "user") {
+    // The administrator sees who proposed it; the author sees their own.
+    const badge = document.createElement("span");
+    badge.className = "badge badge-user";
+    badge.textContent = provider.mine
+      ? "ваш"
+      : "от " + (provider.authorName || "пользователя");
+    title.appendChild(badge);
+  }
+
   if (provider.status === "dead") {
     const badge = document.createElement("span");
     badge.className = "badge";
@@ -571,6 +582,7 @@ function openEditor(id) {
   form.logoUrl.value = provider ? provider.logoUrl : "";
   form.logoAsset.value = provider ? provider.logoAsset : "";
   form.status.value = provider ? provider.status : "active";
+  form.origin.value = provider && provider.origin === "user" ? "user" : "admin";
 
   el.editor.showModal();
 }
@@ -585,6 +597,16 @@ function submitEditor(event) {
   event.preventDefault();
   const form = el.editorForm;
 
+  const editing = state.editingId
+    ? state.config.providers.find(function (p) {
+        return p.id === state.editingId;
+      })
+    : null;
+
+  // "user" keeps the entry to its author (a proposal); "admin" publishes it to
+  // everybody. Publishing clears the author mark.
+  const origin = form.origin.value === "user" ? "user" : "admin";
+
   const data = {
     id: state.editingId || "p" + Date.now().toString(36),
     name: form.name.value.trim(),
@@ -597,6 +619,8 @@ function submitEditor(event) {
     logoUrl: form.logoUrl.value.trim(),
     logoAsset: form.logoAsset.value,
     status: form.status.value === "dead" ? "dead" : "active",
+    origin: origin,
+    authorName: origin === "user" ? (editing ? editing.authorName || "" : "") : "",
     isPredefined: false,
   };
 

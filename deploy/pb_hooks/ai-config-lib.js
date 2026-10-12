@@ -6,13 +6,18 @@
 /// in this module and is pulled in with require() from *inside* each handler.
 ///
 /// Storage layout:
-///   <pb_data>/ai-config/catalogue.json     the provider catalogue (superuser)
+///   <pb_data>/ai-config/catalogue.json     provider catalogue
 ///   <pb_data>/ai-config/<userId>.json      one file per user: enable flags
 ///
-/// The catalogue is the only place provider definitions live. It is written
-/// exclusively by a PocketBase superuser. A regular user's file holds nothing
-/// but which catalogue entries they switched on, so a user can never invent or
-/// rewrite a provider. API keys are not stored here at all — they stay on the
+/// The catalogue holds two kinds of entry:
+///
+///   origin: "admin"  added by a superuser — every user sees it
+///   origin: "user"   proposed by a user — only its author and the superuser
+///                    see it, until an administrator publishes it as "admin"
+///
+/// A regular user can therefore add a provider without being able to impose it
+/// on everyone: it is reported to the administrator together with the author's
+/// name, and every definition travels without secrets — API keys stay on the
 /// device in flutter_secure_storage.
 
 const CATALOGUE_VERSION = 2;
@@ -20,7 +25,12 @@ const CATALOGUE_VERSION = 2;
 const STATUS_ACTIVE = "active";
 const STATUS_DEAD = "dead";
 
-/// Resolves the directory holding the catalogue and the per-user files.
+const ORIGIN_ADMIN = "admin";
+const ORIGIN_USER = "user";
+
+/// Model of the ids: they end up in file names and in URLs.
+const ID_PATTERN = /[^A-Za-z0-9_.-]/g;
+
 function configDir() {
   const override = $os.getenv("PB_AI_CONFIG_DIR");
   if (override) {
@@ -36,7 +46,11 @@ function cataloguePath() {
 }
 
 function flagsPath(userId) {
-  return configDir() + "/" + userId + ".json";
+  return configDir() + "/" + safeId(userId) + ".json";
+}
+
+function safeId(value) {
+  return asText(value).replace(ID_PATTERN, "_").slice(0, 64);
 }
 
 function fileExists(path) {
@@ -83,24 +97,32 @@ function asStatus(value) {
   return value === STATUS_DEAD ? STATUS_DEAD : STATUS_ACTIVE;
 }
 
-/// Keeps only known, non-secret fields. Anything else (notably `api_key`)
-/// is dropped, so a hand-written request cannot smuggle a secret into a file.
+function asOrigin(value) {
+  return value === ORIGIN_USER ? ORIGIN_USER : ORIGIN_ADMIN;
+}
+
+/// Keeps only known, non-secret fields. `api_key` and anything unknown are
+/// dropped, so a hand-written request cannot smuggle a secret into a file.
 function sanitize(raw) {
   if (!raw || typeof raw !== "object") {
     return null;
   }
 
   const provider = {
-    id: asText(raw.id),
-    name: asText(raw.name),
-    url: asText(raw.url),
-    model: asText(raw.model),
+    id: safeId(raw.id),
+    name: asText(raw.name).slice(0, 120),
+    url: asText(raw.url).slice(0, 300),
+    model: asText(raw.model).slice(0, 200),
     fallbackPriority: asInt(raw.fallbackPriority),
-    loginUrl: asText(raw.loginUrl),
-    getApiKeyUrl: asText(raw.getApiKeyUrl),
-    logoUrl: asText(raw.logoUrl),
-    logoAsset: asText(raw.logoAsset),
+    loginUrl: asText(raw.loginUrl).slice(0, 300),
+    getApiKeyUrl: asText(raw.getApiKeyUrl).slice(0, 300),
+    logoUrl: asText(raw.logoUrl).slice(0, 300),
+    logoAsset: asText(raw.logoAsset).slice(0, 60),
     status: asStatus(raw.status),
+    origin: asOrigin(raw.origin),
+    authorId: asText(raw.authorId).slice(0, 64),
+    authorName: asText(raw.authorName).slice(0, 120),
+    createdAt: asText(raw.createdAt),
   };
 
   if (!provider.id || !provider.name) {
@@ -150,7 +172,23 @@ function readCatalogue() {
 }
 
 /// Replaces the catalogue. Superuser only — enforced by the route.
+function writeCatalogueDoc(providers) {
+  const doc = {
+    version: CATALOGUE_VERSION,
+    updated: new Date().toISOString(),
+    providers: sortProviders(providers),
+  };
+  writeJson(cataloguePath(), doc);
+  return doc;
+}
+
 function writeCatalogue(incoming) {
+  const current = readCatalogue();
+  const currentById = {};
+  for (const provider of current.providers) {
+    currentById[provider.id] = provider;
+  }
+
   const rawProviders =
     incoming && Array.isArray(incoming.providers) ? incoming.providers : [];
 
@@ -158,28 +196,35 @@ function writeCatalogue(incoming) {
   const seen = {};
   for (const raw of rawProviders) {
     const provider = sanitize(raw);
-    if (provider && !seen[provider.id]) {
-      seen[provider.id] = true;
-      providers.push(provider);
+    if (!provider || seen[provider.id]) {
+      continue;
     }
+    seen[provider.id] = true;
+
+    // The administrator's client never receives the internal author id, so it
+    // is restored here from what is already stored. Publishing an entry clears
+    // the author mark.
+    const existing = currentById[provider.id];
+    if (existing) {
+      if (provider.origin === ORIGIN_USER) {
+        provider.authorId = existing.authorId || provider.authorId;
+        provider.authorName = existing.authorName || provider.authorName;
+        provider.createdAt = existing.createdAt || provider.createdAt;
+      } else {
+        provider.authorId = "";
+        provider.authorName = "";
+      }
+    }
+
+    providers.push(provider);
   }
 
-  const doc = {
-    version: CATALOGUE_VERSION,
-    updated: new Date().toISOString(),
-    providers: sortProviders(providers),
-  };
-
-  writeJson(cataloguePath(), doc);
-  return doc;
+  writeCatalogueDoc(providers);
+  return readCatalogue();
 }
 
 // ------------------------------------------------------------- user flags
 
-/// Reads the enable flags of a user.
-///
-/// Understands the previous format too, where the file held whole provider
-/// definitions: only their `enabled` value is taken from it.
 function readFlags(userId) {
   const parsed = readJson(flagsPath(userId));
   if (!parsed) {
@@ -195,6 +240,7 @@ function readFlags(userId) {
     return flags;
   }
 
+  // Previous format: the file held whole provider definitions.
   if (Array.isArray(parsed.providers)) {
     for (const item of parsed.providers) {
       if (item && typeof item.id === "string") {
@@ -206,34 +252,12 @@ function readFlags(userId) {
   return flags;
 }
 
-/// Stores the enable flags of a user. Ids absent from the catalogue are
-/// ignored, and nothing else about a provider can be changed this way.
-function writeFlags(userId, incoming, catalogue) {
-  const known = {};
-  for (const provider of catalogue.providers) {
-    known[provider.id] = true;
-  }
-
-  const flags = {};
-  const rawProviders =
-    incoming && Array.isArray(incoming.providers) ? incoming.providers : [];
-
-  for (const raw of rawProviders) {
-    if (!raw || typeof raw !== "object") {
-      continue;
-    }
-    const id = asText(raw.id);
-    if (id && known[id]) {
-      flags[id] = raw.enabled === true;
-    }
-  }
-
+function writeFlags(userId, flags) {
   const doc = {
     version: CATALOGUE_VERSION,
     updated: new Date().toISOString(),
-    enabled: flags,
+    enabled: flags || {},
   };
-
   writeJson(flagsPath(userId), doc);
   return doc;
 }
@@ -246,19 +270,124 @@ function clearFlags(userId) {
   return { version: CATALOGUE_VERSION, updated: "", enabled: {} };
 }
 
+// ------------------------------------------------------- regular user write
+
+/// True when a regular user is allowed to change the definition itself.
+function isOwnProposal(provider, userId) {
+  return (
+    provider.origin === ORIGIN_USER &&
+    asText(provider.authorId) === asText(userId)
+  );
+}
+
+/// Applies what a regular user is allowed to change:
+///
+/// * the enable flags of any entry they can see;
+/// * a brand new provider — stored as their own proposal, reported to the
+///   administrator with the author's name and never imposed on other users;
+/// * edits and deletions of their own proposals.
+///
+/// Everything else (an administrator's entry, another user's proposal, any
+/// secret) is ignored.
+function applyUserWrite(userId, userName, incoming) {
+  const catalogue = readCatalogue();
+
+  const byId = {};
+  for (const provider of catalogue.providers) {
+    byId[provider.id] = provider;
+  }
+
+  const rawProviders =
+    incoming && Array.isArray(incoming.providers) ? incoming.providers : [];
+
+  const kept = [];
+  const seen = {};
+  const flags = {};
+
+  for (const raw of rawProviders) {
+    if (!raw || typeof raw !== "object") {
+      continue;
+    }
+
+    const id = safeId(raw.id);
+    if (!id || seen[id]) {
+      continue;
+    }
+    seen[id] = true;
+
+    const existing = byId[id];
+
+    if (!existing) {
+      // A new provider proposed by this user. It needs to be usable.
+      const proposal = sanitize(raw);
+      if (!proposal || !proposal.url || !proposal.model) {
+        continue;
+      }
+      proposal.origin = ORIGIN_USER;
+      proposal.authorId = userId;
+      proposal.authorName = userName;
+      proposal.createdAt = new Date().toISOString();
+      proposal.status = STATUS_ACTIVE;
+      kept.push(proposal);
+      flags[id] = raw.enabled !== false;
+      continue;
+    }
+
+    if (isOwnProposal(existing, userId)) {
+      const updated = sanitize(raw);
+      if (updated) {
+        updated.origin = ORIGIN_USER;
+        updated.authorId = userId;
+        updated.authorName = userName;
+        updated.createdAt = existing.createdAt;
+        kept.push(updated);
+      } else {
+        kept.push(existing);
+      }
+      flags[id] = raw.enabled === true;
+      continue;
+    }
+
+    // An administrator's entry, or somebody else's: only the flag changes.
+    kept.push(existing);
+    flags[id] = raw.enabled === true;
+  }
+
+  // Whatever the user did not send back.
+  for (const provider of catalogue.providers) {
+    if (seen[provider.id]) {
+      continue;
+    }
+    if (isOwnProposal(provider, userId)) {
+      continue; // the user deleted their own proposal
+    }
+    kept.push(provider);
+  }
+
+  writeCatalogueDoc(kept);
+  writeFlags(userId, flags);
+  return { catalogue: readCatalogue(), flags: flags };
+}
+
 // ------------------------------------------------------------------ merge
 
-/// The catalogue as the caller is allowed to see it: definitions from the
-/// catalogue, `enabled` from the caller's own flags.
+/// The catalogue as the caller is allowed to see it.
 ///
-/// `canEdit` tells the client whether it may change the definitions — only a
+/// `canEdit` tells the client whether it may change definitions — only a
 /// PocketBase superuser may.
-function viewFor(flags, canEdit) {
+function viewFor(flags, canEdit, userId) {
   const catalogue = readCatalogue();
+  const viewer = asText(userId);
 
   const providers = [];
   for (const provider of catalogue.providers) {
     const isEnabled = flags[provider.id] === true;
+
+    // A regular user sees the administrator's entries plus everything they
+    // proposed themselves.
+    if (!canEdit && provider.origin === ORIGIN_USER && provider.authorId !== viewer) {
+      continue;
+    }
 
     // A provider the administrator marked as dead disappears from a regular
     // user's list — but only while that user has it switched off. An entry
@@ -280,6 +409,10 @@ function viewFor(flags, canEdit) {
       logoUrl: provider.logoUrl,
       logoAsset: provider.logoAsset,
       status: provider.status,
+      origin: provider.origin,
+      authorName: provider.authorName,
+      // Lets the app decide whether the entry may be edited or deleted.
+      mine: provider.origin === ORIGIN_USER && provider.authorId === viewer,
     });
   }
 
@@ -293,11 +426,24 @@ function viewFor(flags, canEdit) {
 
 function meta(userId, isSuperuser) {
   const catalogue = readCatalogue();
+  let mine = 0;
+  let proposals = 0;
+  for (const provider of catalogue.providers) {
+    if (provider.origin === ORIGIN_USER) {
+      proposals++;
+      if (provider.authorId === asText(userId)) {
+        mine++;
+      }
+    }
+  }
+
   return {
     dir: configDir(),
     catalogue: cataloguePath(),
     catalogueExists: fileExists(cataloguePath()),
     catalogueCount: catalogue.providers.length,
+    proposalCount: proposals,
+    myProposalCount: mine,
     userFile: userId ? flagsPath(userId) : "",
     userFileExists: userId ? fileExists(flagsPath(userId)) : false,
     isSuperuser: isSuperuser === true,
@@ -308,11 +454,14 @@ module.exports = {
   CATALOGUE_VERSION: CATALOGUE_VERSION,
   STATUS_ACTIVE: STATUS_ACTIVE,
   STATUS_DEAD: STATUS_DEAD,
+  ORIGIN_ADMIN: ORIGIN_ADMIN,
+  ORIGIN_USER: ORIGIN_USER,
   configDir: configDir,
   cataloguePath: cataloguePath,
   flagsPath: flagsPath,
   readCatalogue: readCatalogue,
   writeCatalogue: writeCatalogue,
+  applyUserWrite: applyUserWrite,
   readFlags: readFlags,
   writeFlags: writeFlags,
   clearFlags: clearFlags,

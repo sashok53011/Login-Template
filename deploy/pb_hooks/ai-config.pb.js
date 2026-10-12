@@ -28,12 +28,12 @@ routerAdd(
   (e) => {
     const lib = require(__hooks + "/ai-config-lib.js");
     if (e.hasSuperuserAuth()) {
-      return e.json(200, lib.viewFor({}, true));
+      return e.json(200, lib.viewFor({}, true, ""));
     }
     if (!e.auth) {
       throw new UnauthorizedError();
     }
-    return e.json(200, lib.viewFor(lib.readFlags(e.auth.id), false));
+    return e.json(200, lib.viewFor(lib.readFlags(e.auth.id), false, e.auth.id));
   },
   (e) => {
     if (e.auth || e.hasSuperuserAuth()) {
@@ -54,17 +54,21 @@ routerAdd(
     }
 
     if (e.hasSuperuserAuth()) {
-      const saved = lib.writeCatalogue(body);
-      return e.json(200, lib.viewFor({}, true));
+      lib.writeCatalogue(body);
+      return e.json(200, lib.viewFor({}, true, ""));
     }
 
     if (!e.auth) {
       throw new UnauthorizedError();
     }
 
-    const catalogue = lib.readCatalogue();
-    lib.writeFlags(e.auth.id, body, catalogue);
-    return e.json(200, lib.viewFor(lib.readFlags(e.auth.id), false));
+    // A regular user may flip flags and propose their own providers; an
+    // administrator's entries and other users' proposals are untouchable.
+    lib.applyUserWrite(e.auth.id, e.auth.get("name") || e.auth.get("email"), body);
+    return e.json(
+      200,
+      lib.viewFor(lib.readFlags(e.auth.id), false, e.auth.id),
+    );
   },
   (e) => {
     if (e.auth || e.hasSuperuserAuth()) {
@@ -81,7 +85,7 @@ routerAdd(
     const lib = require(__hooks + "/ai-config-lib.js");
     if (e.auth) {
       lib.clearFlags(e.auth.id);
-      return e.json(200, lib.viewFor({}, false));
+      return e.json(200, lib.viewFor({}, false, e.auth.id));
     }
     throw new UnauthorizedError("Сбросить каталог может только суперпользователь.");
   },

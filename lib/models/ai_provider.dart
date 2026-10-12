@@ -17,6 +17,9 @@ class AiProvider extends Equatable {
     this.logoAsset,
     this.isPredefined = false,
     this.status = 'active',
+    this.origin = 'admin',
+    this.authorName = '',
+    this.mine = false,
   });
 
   final String id;
@@ -37,7 +40,19 @@ class AiProvider extends Equatable {
   /// sets this; a dead entry is removed from a user's list while it is off.
   final String status;
 
+  /// `admin` for an entry the administrator published to everyone, `user` for
+  /// a proposal that only its author and the administrator can see.
+  final String origin;
+
+  /// Name of the user who proposed the entry (empty for the administrator's).
+  final String authorName;
+
+  /// True when this entry is the current user's own proposal, i.e. the one
+  /// they may edit or delete.
+  final bool mine;
+
   bool get isDead => status == 'dead';
+  bool get isProposal => origin == 'user';
 
   factory AiProvider.fromJson(Map<String, dynamic> json) {
     return AiProvider(
@@ -55,6 +70,9 @@ class AiProvider extends Equatable {
       logoAsset: json['logoAsset']?.toString(),
       isPredefined: json['isPredefined'] == true,
       status: json['status']?.toString() ?? 'active',
+      origin: json['origin']?.toString() ?? 'admin',
+      authorName: json['authorName']?.toString() ?? '',
+      mine: json['mine'] == true,
     );
   }
 
@@ -132,6 +150,8 @@ class AiProvider extends Equatable {
       'logoAsset': logoAsset ?? '',
       'isPredefined': isPredefined,
       'status': status,
+      'origin': origin,
+      'authorName': authorName,
     };
   }
 
@@ -151,6 +171,9 @@ class AiProvider extends Equatable {
     String? logoAsset,
     bool? isPredefined,
     String? status,
+    String? origin,
+    String? authorName,
+    bool? mine,
   }) {
     return AiProvider(
       id: id ?? this.id,
@@ -167,6 +190,9 @@ class AiProvider extends Equatable {
       logoAsset: logoAsset ?? this.logoAsset,
       isPredefined: isPredefined ?? this.isPredefined,
       status: status ?? this.status,
+      origin: origin ?? this.origin,
+      authorName: authorName ?? this.authorName,
+      mine: mine ?? this.mine,
     );
   }
 
@@ -186,5 +212,8 @@ class AiProvider extends Equatable {
         logoAsset,
         isPredefined,
         status,
+        origin,
+        authorName,
+        mine,
       ];
 }

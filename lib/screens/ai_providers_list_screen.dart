@@ -52,6 +52,11 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showEditor(null),
+        icon: const Icon(Icons.add),
+        label: const Text('Добавить провайдера'),
+      ),
       body: SafeArea(
         child: Column(
           children: <Widget>[
@@ -61,6 +66,34 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
               onToggleSync: (bool value) =>
                   ref.read(aiProvidersProvider.notifier).setSyncEnabled(value),
             ),
+            if (state.error != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Icon(
+                      Icons.error_outline,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        state.error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          ref.read(aiProvidersProvider.notifier).refresh(),
+                      child: const Text('Повторить'),
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: state.isLoading && state.items.isEmpty
                   ? const Center(child: CircularProgressIndicator())
@@ -90,6 +123,12 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
                                   .toggle(provider.id, v),
                               onEditKey: () => _showApiKeyDialog(provider),
                               onTest: () => _runTest(provider),
+                              onEdit: provider.mine
+                                  ? () => _showEditor(provider)
+                                  : null,
+                              onDelete: provider.mine
+                                  ? () => _confirmDelete(provider)
+                                  : null,
                             );
                           },
                         ),
@@ -115,6 +154,94 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
     );
   }
 
+  /// Creates a provider of the user's own, or edits one of their proposals.
+  ///
+  /// A new provider is sent to the administrator for review: it appears in
+  /// their list marked with the author, and becomes visible to everyone only
+  /// when an administrator publishes it.
+  Future<void> _showEditor(AiProvider? provider) async {
+    final changes = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _ProviderEditorDialog(provider: provider),
+    );
+    if (changes == null) return;
+
+    final notifier = ref.read(aiProvidersProvider.notifier);
+    try {
+      if (provider == null) {
+        await notifier.add(
+          AiProvider(
+            id: 'p${DateTime.now().millisecondsSinceEpoch}',
+            name: changes['name']?.toString() ?? '',
+            enabled: true,
+            url: changes['url']?.toString() ?? '',
+            model: changes['model']?.toString() ?? '',
+            fallbackPriority: changes['fallbackPriority'] is num
+                ? (changes['fallbackPriority'] as num).toInt()
+                : 0,
+            loginUrl: _text(changes['loginUrl']),
+            getApiKeyUrl: _text(changes['getApiKeyUrl']),
+            logoUrl: _text(changes['logoUrl']),
+            logoAsset: _text(changes['logoAsset']),
+          ),
+        );
+      } else {
+        await notifier.update(provider.id, changes);
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            provider == null
+                ? 'Провайдер добавлен и отправлен администратору'
+                : 'Провайдер обновлён',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: ${_cleanError(e)}')),
+      );
+    }
+  }
+
+  String? _text(dynamic value) {
+    final s = value?.toString().trim() ?? '';
+    return s.isEmpty ? null : s;
+  }
+
+  Future<void> _confirmDelete(AiProvider provider) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить провайдера?'),
+        content: Text('Будет удалён ваш провайдер: ${provider.name}'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await ref.read(aiProvidersProvider.notifier).delete(provider.id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: ${_cleanError(e)}')),
+      );
+    }
+  }
+
   /// Runs the provider test and shows either the model list or the reason it
   /// failed.
   Future<void> _runTest(AiProvider provider) async {
@@ -136,6 +263,162 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
         result: result,
       ),
     );
+  }
+}
+
+/// Definition editor for the user's own providers. The shared catalogue is the
+/// administrator's, so this is never reachable for their entries.
+class _ProviderEditorDialog extends StatefulWidget {
+  const _ProviderEditorDialog({this.provider});
+
+  final AiProvider? provider;
+
+  @override
+  State<_ProviderEditorDialog> createState() => _ProviderEditorDialogState();
+}
+
+class _ProviderEditorDialogState extends State<_ProviderEditorDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late final TextEditingController _url;
+  late final TextEditingController _model;
+  late final TextEditingController _priority;
+  late final TextEditingController _loginUrl;
+  late final TextEditingController _getApiKeyUrl;
+  late final TextEditingController _logoUrl;
+  late final TextEditingController _logoAsset;
+  bool _enabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.provider;
+    _name = TextEditingController(text: p?.name ?? '');
+    _url = TextEditingController(text: p?.url ?? '');
+    _model = TextEditingController(text: p?.model ?? '');
+    _priority = TextEditingController(
+      text: (p?.fallbackPriority ?? 0).toString(),
+    );
+    _loginUrl = TextEditingController(text: p?.loginUrl ?? '');
+    _getApiKeyUrl = TextEditingController(text: p?.getApiKeyUrl ?? '');
+    _logoUrl = TextEditingController(text: p?.logoUrl ?? '');
+    _logoAsset = TextEditingController(text: p?.logoAsset ?? '');
+    _enabled = p?.enabled ?? true;
+  }
+
+  @override
+  void dispose() {
+    for (final controller in <TextEditingController>[
+      _name,
+      _url,
+      _model,
+      _priority,
+      _loginUrl,
+      _getApiKeyUrl,
+      _logoUrl,
+      _logoAsset,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isNew = widget.provider == null;
+
+    return AlertDialog(
+      title: Text(isNew ? 'Новый провайдер' : 'Ваш провайдер'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                if (isNew)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'Провайдер появится у администратора с пометкой, что его '
+                      'добавили вы. Остальные пользователи увидят его после '
+                      'того, как администратор его опубликует. API-ключ сюда '
+                      'не входит — он остаётся на устройстве.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                _field(_name, 'Название', required: true),
+                _field(_url, 'URL', required: true),
+                _field(_model, 'Model', required: true),
+                _field(_priority, 'Приоритет', numeric: true),
+                _field(_loginUrl, 'Страница логина (URL)'),
+                _field(_getApiKeyUrl, 'Получить API-ключ (URL)'),
+                _field(_logoUrl, 'Логотип: ссылка'),
+                _field(_logoAsset, 'Логотип: имя в assets/logos'),
+                SwitchListTile(
+                  value: _enabled,
+                  onChanged: (v) => setState(() => _enabled = v),
+                  title: const Text('Включён'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Сохранить')),
+      ],
+    );
+  }
+
+  Widget _field(
+    TextEditingController controller,
+    String label, {
+    bool required = false,
+    bool numeric = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: numeric ? TextInputType.number : TextInputType.text,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+        validator: (value) {
+          if (!required) return null;
+          return value == null || value.trim().isEmpty
+              ? 'Обязательное поле'
+              : null;
+        },
+      ),
+    );
+  }
+
+  void _save() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    final priority = int.tryParse(_priority.text.trim()) ?? 0;
+
+    Navigator.of(context).pop(<String, dynamic>{
+      'name': _name.text.trim(),
+      'url': _url.text.trim(),
+      'model': _model.text.trim(),
+      'fallbackPriority': priority < 0 ? 0 : priority,
+      'enabled': _enabled,
+      'loginUrl': _loginUrl.text.trim(),
+      'getApiKeyUrl': _getApiKeyUrl.text.trim(),
+      'logoUrl': _logoUrl.text.trim(),
+      'logoAsset': _logoAsset.text.trim(),
+    });
   }
 }
 
@@ -376,12 +659,18 @@ class _ProviderCard extends StatelessWidget {
     required this.onTest,
     this.testing = false,
     this.stats,
+    this.onEdit,
+    this.onDelete,
   });
 
   final AiProvider provider;
   final ValueChanged<bool> onToggle;
   final VoidCallback onEditKey;
   final VoidCallback onTest;
+
+  /// Set only for the user's own providers.
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   /// True while this provider's test is running.
   final bool testing;
@@ -416,6 +705,28 @@ class _ProviderCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          if (provider.isProposal)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .secondaryContainer,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                'ваш',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSecondaryContainer,
+                                ),
+                              ),
+                            ),
                           if (provider.isDead)
                             Container(
                               margin: const EdgeInsets.only(left: 8),
@@ -505,6 +816,18 @@ class _ProviderCard extends StatelessWidget {
                     testing ? 'Проверяем…' : 'Проверить и список моделей',
                   ),
                 ),
+                if (onEdit != null)
+                  TextButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Изменить'),
+                  ),
+                if (onDelete != null)
+                  TextButton.icon(
+                    onPressed: onDelete,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Удалить'),
+                  ),
               ],
             ),
           ],
@@ -534,6 +857,13 @@ String? _statsLabel(ModelStats? stats) {
       : ' · ${two(at.day)}.${two(at.month)} ${two(at.hour)}:${two(at.minute)}';
 
   return '${stats.usersLabel}$when';
+}
+
+/// Drops the `Exception: ` prefix so error texts read naturally.
+String _cleanError(Object error) {
+  final text = error.toString();
+  const prefix = 'Exception: ';
+  return text.startsWith(prefix) ? text.substring(prefix.length) : text;
 }
 
 class _InfoLine extends StatelessWidget {

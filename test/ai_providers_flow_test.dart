@@ -210,13 +210,28 @@ class FakeAiBackend implements HttpClientAdapter {
     }
 
     final providers = <dynamic>[];
+    final known = <String>{};
     for (final raw in (catalogue['providers'] as List<dynamic>)) {
       final provider = Map<String, dynamic>.from(raw as Map);
       final id = provider['id'] as String;
+      known.add(id);
       if (flags.containsKey(id)) {
         provider['enabled'] = flags[id];
       }
       providers.add(provider);
+    }
+
+    // Unknown ids become the caller's own proposals, like the real server.
+    for (final raw in (body['providers'] as List<dynamic>? ?? <dynamic>[])) {
+      final item = Map<String, dynamic>.from(raw as Map);
+      final id = item['id'] as String;
+      if (known.contains(id)) continue;
+      providers.add(<String, dynamic>{
+        ...item,
+        'origin': 'user',
+        'authorName': 'sashok',
+        'mine': true,
+      });
     }
 
     catalogue = <String, dynamic>{
@@ -301,6 +316,11 @@ Future<void> pumpApp(
   FakeAiBackend backend,
   FakeStorage storage,
 ) async {
+  // A taller surface keeps the extended FAB from covering the card buttons,
+  // which is what a real phone screen does not do either.
+  await tester.binding.setSurfaceSize(const Size(900, 1400));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
   final api = ApiClient()..dio.httpClientAdapter = backend;
   final providerApi = ProviderTestService(
     dio: Dio()..httpClientAdapter = FakeProviderAdapter(backend),
@@ -368,10 +388,11 @@ void main() {
       findsOneWidget,
     );
 
-    // A regular user may not change provider definitions.
-    expect(find.text('Добавить провайдера'), findsNothing);
-    expect(find.text('Удалить'), findsNothing);
+    // A regular user cannot change the administrator's entries...
     expect(find.text('Редактировать'), findsNothing);
+    expect(find.text('Удалить'), findsNothing);
+    // ...but may propose their own.
+    expect(find.text('Добавить провайдера'), findsOneWidget);
   });
 
   testWidgets('switching a provider on sends the choice to the server',
@@ -589,6 +610,72 @@ void main() {
     // An empty clipboard must not throw.
     await tester.tap(paste);
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('a new provider is sent as the user own proposal',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[_entry('openai', 'OpenAI', 1)]),
+    );
+
+    await openProviders(tester, backend, FakeStorage());
+
+    await tester.tap(find.text('Добавить провайдера'));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'My LLM');
+    await tester.enterText(fields.at(1), 'http://192.168.0.5:8080/v1');
+    await tester.enterText(fields.at(2), 'my-model');
+    await tester.enterText(fields.at(3), '11');
+    await tester.pumpAndSettle();
+
+    final save = find.widgetWithText(FilledButton, 'Сохранить');
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    // The definition reaches the server without any secret...
+    final sent = backend.putBodies.last['providers'] as List<dynamic>;
+    final proposal = sent.firstWhere(
+      (dynamic p) => (p as Map<String, dynamic>)['name'] == 'My LLM',
+    ) as Map<String, dynamic>;
+    expect(proposal['url'], 'http://192.168.0.5:8080/v1');
+    expect(proposal['model'], 'my-model');
+    expect(proposal['fallbackPriority'], 11);
+    expect(jsonEncode(sent), isNot(contains('api_key')));
+
+    // ...and the entry is marked as the user's own.
+    expect(find.text('My LLM'), findsOneWidget);
+    expect(find.text('ваш'), findsOneWidget);
+  });
+
+  testWidgets('an auto login restores the user so the catalogue loads',
+      (WidgetTester tester) async {
+    // A stored token alone used to be enough to look signed in while the user
+    // id stayed empty, which silently disabled the whole sync.
+    final storage = FakeStorage()
+      ..token = 'test-token'
+      ..data = <String, String?>{
+        'userId': FakeAiBackend.userId,
+        'username': 'sashok',
+        'email': 'user@example.com',
+      };
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[_entry('openai', 'OpenAI', 1)]),
+    );
+
+    await pumpApp(tester, backend, storage);
+
+    // Went straight to the home screen without a login form.
+    expect(find.text('Вы зашли как sashok'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'AI-провайдеры'));
+    await tester.pumpAndSettle();
+
+    expect(backend.calls, contains('GET /api/ai-config'));
+    expect(find.text('OpenAI'), findsOneWidget);
   });
 
   testWidgets('a rejected key is reported as a failure',

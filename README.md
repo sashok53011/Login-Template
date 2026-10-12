@@ -194,12 +194,24 @@ Fields: `user` (relation → `users`, required), `name` (text, required),
 
 > No `api_key` field is needed on the server — the key lives on the device only.
 
-### The catalogue is owned by an administrator
+### Who may change what
 
 Provider definitions live in one shared catalogue on the server
-(`pb_data/ai-config/catalogue.json`), and only a **PocketBase superuser** may
-add, change or delete them. A regular user can switch entries on and off and
-keep their own API keys — nothing else.
+(`pb_data/ai-config/catalogue.json`). Every entry has an origin:
+
+| Origin | Added by | Seen by |
+|---|---|---|
+| `admin` | a PocketBase superuser | everybody |
+| `user` | a regular user | its author and the superuser, until an administrator publishes it |
+
+A regular user **can** add a provider of their own. It is reported to the
+administrator together with the author's name and all of its data except
+secrets, and it stays invisible to other users until an administrator switches
+it to `admin` — that is what the “Видят” field on the web page is for.
+
+A regular user may edit and delete their **own** entries. An administrator's
+entry allows exactly one thing: entering your own API key, which stays on the
+device.
 
 The same list is in a browser at `https://app.devhorizon.online/ai-providers/`
 (PocketBase serves that page itself, so it is the same origin). There an

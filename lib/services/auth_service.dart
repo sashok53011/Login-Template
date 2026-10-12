@@ -144,6 +144,22 @@ class AuthService {
     return token;
   }
 
+  /// Rebuilds the signed-in user from what was stored at login time.
+  ///
+  /// The token alone is not enough: without the id the per-user screens (AI
+  /// providers, statistics) cannot address anything, which is why an auto
+  /// login used to come back with an empty provider list.
+  Future<User?> restoreUser() async {
+    final data = await _storage.getUserData();
+    final id = data['userId']?.trim() ?? '';
+    if (id.isEmpty) return null;
+    return User(
+      id: id,
+      email: data['email']?.trim() ?? '',
+      username: data['username']?.trim() ?? '',
+    );
+  }
+
   /// Best effort display name: username > email > id > fallback.
   Future<String> getDisplayName() async {
     final data = await _storage.getUserData();

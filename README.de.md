@@ -199,12 +199,24 @@ Felder: `user` (Relation → `users`, required), `name` (text, required),
 > Ein Feld `api_key` wird auf dem Server **nicht** benötigt — der Key liegt nur
 > auf dem Gerät.
 
-### Den Katalog pflegt ein Administrator
+### Wer was ändern darf
 
 Die Anbieterdefinitionen liegen in einem gemeinsamen Katalog auf dem Server
-(`pb_data/ai-config/catalogue.json`); hinzufügen, ändern und löschen darf sie
-**nur ein PocketBase-Superuser**. Ein normaler Benutzer kann Einträge ein- und
-ausschalten und seine eigenen API-Keys hinterlegen — mehr nicht.
+(`pb_data/ai-config/catalogue.json`). Jeder Eintrag hat eine Herkunft:
+
+| Herkunft | Hinzugefügt von | Sichtbar für |
+|---|---|---|
+| `admin` | einem PocketBase-Superuser | alle |
+| `user` | einem normalen Benutzer | den Autor und den Superuser, bis ein Administrator ihn veröffentlicht |
+
+Ein normaler Benutzer **darf** einen eigenen Anbieter hinzufügen. Er wird dem
+Administrator samt Autorennamen und allen Daten außer Geheimnissen gemeldet und
+bleibt für andere unsichtbar, bis ein Administrator ihn auf `admin` umstellt —
+dafür gibt es auf der Webseite das Feld „Видят".
+
+Eigene Einträge darf der Benutzer bearbeiten und löschen. Bei einem Eintrag des
+Administrators geht genau eines: den eigenen API-Key hinterlegen, der auf dem
+Gerät bleibt.
 
 Dieselbe Liste gibt es im Browser unter
 `https://app.devhorizon.online/ai-providers/` (PocketBase liefert die Seite
