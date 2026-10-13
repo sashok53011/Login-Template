@@ -22,7 +22,7 @@ class AiStatsService {
       final response = await _api.dio.get<dynamic>(_path);
       return _parse(response.data);
     } on DioException catch (e) {
-      throw Exception(_readError(e, 'Не удалось получить статистику'));
+      throw Exception(_readError(e, 'err.statsLoad'));
     }
   }
 
@@ -51,7 +51,7 @@ class AiStatsService {
       }
       return ProviderStats(providerId: providerId);
     } on DioException catch (e) {
-      throw Exception(_readError(e, 'Не удалось сохранить статистику'));
+      throw Exception(_readError(e, 'err.statsSave'));
     }
   }
 
@@ -74,16 +74,16 @@ class AiStatsService {
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
       case DioExceptionType.connectionError:
-        return 'Нет связи с сервером. Проверьте интернет-соединение.';
+        return 'err.noConnection';
       case DioExceptionType.cancel:
-        return 'Запрос был отменён.';
+        return 'err.cancelled';
       default:
         break;
     }
 
     final status = e.response?.statusCode;
     if (status == 401) {
-      return 'Сессия истекла. Войдите заново.';
+      return 'err.sessionExpired';
     }
 
     final data = e.response?.data;

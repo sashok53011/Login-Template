@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/settings_provider.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -10,16 +11,22 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authProvider);
+    final language = ref.watch(settingsProvider).language;
     final name = auth.displayName.trim().isNotEmpty
         ? auth.displayName
-        : 'пользователь';
+        : translate('common.user', language);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Главная'),
+        title: Text(translate('home.title', language)),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Выйти',
+            tooltip: translate('home.settings', language),
+            icon: const Icon(Icons.settings),
+            onPressed: () => context.push('/settings'),
+          ),
+          IconButton(
+            tooltip: translate('common.logout', language),
             icon: const Icon(Icons.logout),
             onPressed: () => _logout(context, ref),
           ),
@@ -35,7 +42,11 @@ class HomeScreen extends ConsumerWidget {
                 const Icon(Icons.account_circle, size: 96),
                 const SizedBox(height: 24),
                 Text(
-                  'Вы зашли как $name',
+                  translate(
+                    'home.loggedInAs',
+                    language,
+                    args: <String, String>{'name': name},
+                  ),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
@@ -51,13 +62,19 @@ class HomeScreen extends ConsumerWidget {
                 const SizedBox(height: 32),
                 FilledButton.tonalIcon(
                   icon: const Icon(Icons.list_alt),
-                  label: const Text('AI-провайдеры'),
+                  label: Text(translate('home.aiProviders', language)),
                   onPressed: () => context.push('/ai-providers'),
                 ),
                 const SizedBox(height: 12),
                 FilledButton.tonalIcon(
+                  icon: const Icon(Icons.settings),
+                  label: Text(translate('home.settings', language)),
+                  onPressed: () => context.push('/settings'),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.tonalIcon(
                   icon: const Icon(Icons.logout),
-                  label: const Text('Выйти'),
+                  label: Text(translate('common.logout', language)),
                   onPressed: () => _logout(context, ref),
                 ),
               ],
@@ -69,19 +86,20 @@ class HomeScreen extends ConsumerWidget {
   }
 
   Future<void> _logout(BuildContext context, WidgetRef ref) async {
+    final language = ref.read(settingsProvider).language;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Выйти?'),
-        content: const Text('Сессия будет завершена, потребуется войти снова.'),
+        title: Text(translate('home.logoutTitle', language)),
+        content: Text(translate('home.logoutConfirm', language)),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
+            child: Text(translate('common.cancel', language)),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Выйти'),
+            child: Text(translate('common.logout', language)),
           ),
         ],
       ),

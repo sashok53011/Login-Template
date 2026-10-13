@@ -316,6 +316,10 @@ Future<void> pumpApp(
   FakeAiBackend backend,
   FakeStorage storage,
 ) async {
+  // The suite asserts the Russian default, so pin the platform locale.
+  tester.platformDispatcher.localeTestValue = const Locale('ru');
+  tester.platformDispatcher.localesTestValue = const <Locale>[Locale('ru')];
+
   // A taller surface keeps the extended FAB from covering the card buttons,
   // which is what a real phone screen does not do either.
   await tester.binding.setSurfaceSize(const Size(900, 1400));

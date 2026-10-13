@@ -178,6 +178,10 @@ Future<void> pumpApp(
   FakeBackend backend,
   FakeStorage storage,
 ) async {
+  // The suite asserts the Russian default, so pin the platform locale.
+  tester.platformDispatcher.localeTestValue = const Locale('ru');
+  tester.platformDispatcher.localesTestValue = const <Locale>[Locale('ru')];
+
   final api = ApiClient()..dio.httpClientAdapter = backend;
   await tester.pumpWidget(
     ProviderScope(

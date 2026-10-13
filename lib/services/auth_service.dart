@@ -37,7 +37,7 @@ class AuthService {
       );
       return User.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
-      throw Exception(_readError(e, 'Ошибка регистрации'));
+      throw Exception(_readError(e, 'err.registerFailed'));
     }
   }
 
@@ -70,7 +70,7 @@ class AuthService {
             data is Map ? (data['totalItems'] as num?)?.toInt() : null;
         return (total ?? 0) > 0;
       } on DioException catch (e) {
-        final message = _readError(e, 'Не удалось проверить доступность');
+        final message = _readError(e, 'err.availabilityCheck');
         if (attempt == 0 && _isTransportError(e)) {
           await Future<void>.delayed(const Duration(milliseconds: 400));
           continue;
@@ -106,7 +106,7 @@ class AuthService {
       final data = response.data as Map<String, dynamic>;
       final token = data['token']?.toString();
       if (token == null || token.isEmpty) {
-        throw Exception('Сервер не вернул токен авторизации');
+        throw Exception('err.noToken');
       }
 
       final user = User.fromJson(data['record'] as Map<String, dynamic>);
@@ -121,7 +121,7 @@ class AuthService {
 
       return user;
     } on DioException catch (e) {
-      throw Exception(_readError(e, 'Ошибка входа'));
+      throw Exception(_readError(e, 'err.loginFailed'));
     }
   }
 
@@ -160,7 +160,7 @@ class AuthService {
     );
   }
 
-  /// Best effort display name: username > email > id > fallback.
+  /// Best effort display name: username > email > id > none.
   Future<String> getDisplayName() async {
     final data = await _storage.getUserData();
     for (final value in <String?>[
@@ -171,7 +171,9 @@ class AuthService {
       final v = value?.trim() ?? '';
       if (v.isNotEmpty) return v;
     }
-    return 'пользователь';
+    // Left empty on purpose: the home screen substitutes a translated
+    // placeholder, so no Russian literal lives in the service layer.
+    return '';
   }
 
   // ---------------------------------------------------------------------------
@@ -185,7 +187,7 @@ class AuthService {
   Future<void> signInWithGoogle() async {
     // TODO: enable Google OAuth in PocketBase Settings > Auth providers,
     // then exchange the provider code for a session here.
-    throw UnimplementedError('Google OAuth пока не подключён');
+    throw UnimplementedError('Google OAuth is not connected yet');
   }
 
   String _readError(DioException e, String fallback) {
@@ -194,9 +196,9 @@ class AuthService {
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
       case DioExceptionType.connectionError:
-        return 'Нет связи с сервером. Проверьте интернет-соединение.';
+        return 'err.noConnection';
       case DioExceptionType.cancel:
-        return 'Запрос был отменён.';
+        return 'err.cancelled';
       default:
         break;
     }
@@ -222,35 +224,38 @@ class AuthService {
     return localized;
   }
 
-  /// PocketBase reports failures in English; the app speaks Russian.
+  /// Maps the English PocketBase/transport messages onto `err.*` keys; the
+  /// screens translate them for the user. An unknown message is passed
+  /// through unchanged.
   String _localizeMessage(String raw) {
     if (raw.isEmpty) return '';
     final m = raw.toLowerCase();
     if (m.contains('failed to authenticate')) {
-      return 'Неверный email или пароль.';
+      return 'err.authFailed';
     }
     if (m.contains('failed to create record')) {
-      return 'Не удалось создать аккаунт.';
+      return 'err.createFailed';
     }
     if (m.contains('failed to update')) {
-      return 'Не удалось обновить данные.';
+      return 'err.updateFailed';
     }
     if (m.contains("wasn't found") || m.contains('not found')) {
-      return 'Запись не найдена.';
+      return 'err.notFound';
     }
     if (m.contains('too many requests')) {
-      return 'Слишком много попыток. Повторите позже.';
+      return 'err.tooMany';
     }
     if (m.contains('something went wrong')) {
-      return 'Сервер вернул ошибку. Повторите позже.';
+      return 'err.serverError';
     }
     if (m.contains('token') && m.contains('expired')) {
-      return 'Сессия истекла. Войдите заново.';
+      return 'err.sessionExpired';
     }
     return raw;
   }
 
-  /// Turns the `data` map of a validation error into readable lines.
+  /// Turns the `data` map of a validation error into readable lines built
+  /// from `err.*` keys.
   String _describeDetails(dynamic data) {
     if (data is! Map || data.isEmpty) return '';
     final parts = <String>[];
@@ -266,20 +271,20 @@ class AuthService {
     return parts.join('\n');
   }
 
-  /// Translates the individual field messages PocketBase returns.
+  /// Maps the individual PocketBase field messages onto `err.*` keys.
   String _localizeField(String raw) {
     final m = raw.toLowerCase();
     if (m.contains('already exists') || m.contains('must be unique')) {
-      return 'занято';
+      return 'err.taken';
     }
-    if (m.contains('valid email')) return 'некорректный email';
-    if (m.contains('8 or more')) return 'минимум 8 символов';
+    if (m.contains('valid email')) return 'err.invalidEmail';
+    if (m.contains('8 or more')) return 'err.min8';
     if (m.contains('do not match') || m.contains('should match')) {
-      return 'значения не совпадают';
+      return 'err.mismatch';
     }
-    if (m.contains('required')) return 'обязательное поле';
-    if (m.contains('too short')) return 'слишком короткое значение';
-    if (m.contains('invalid')) return 'недопустимое значение';
+    if (m.contains('required')) return 'err.requiredField';
+    if (m.contains('too short')) return 'err.tooShort';
+    if (m.contains('invalid')) return 'err.invalidValue';
     return raw;
   }
 }

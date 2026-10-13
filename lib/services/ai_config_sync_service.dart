@@ -29,7 +29,7 @@ class AiConfigSyncService {
       }
       return const AiConfig();
     } on DioException catch (e) {
-      throw Exception(_readError(e, 'Не удалось получить конфиг с сервера'));
+      throw Exception(_readError(e, 'err.configLoad'));
     }
   }
 
@@ -45,7 +45,7 @@ class AiConfigSyncService {
       }
       return AiConfig(providers: providers);
     } on DioException catch (e) {
-      throw Exception(_readError(e, 'Не удалось сохранить конфиг на сервере'));
+      throw Exception(_readError(e, 'err.configSave'));
     }
   }
 
@@ -55,18 +55,18 @@ class AiConfigSyncService {
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
       case DioExceptionType.connectionError:
-        return 'Нет связи с сервером. Проверьте интернет-соединение.';
+        return 'err.noConnection';
       case DioExceptionType.badCertificate:
-        return 'Проблема с сертификатом сервера.';
+        return 'err.badCert';
       case DioExceptionType.cancel:
-        return 'Запрос был отменён.';
+        return 'err.cancelled';
       default:
         break;
     }
 
     final status = e.response?.statusCode;
     if (status == 401) {
-      return 'Сессия истекла. Войдите заново.';
+      return 'err.sessionExpired';
     }
 
     final data = e.response?.data;

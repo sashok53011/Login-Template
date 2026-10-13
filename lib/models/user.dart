@@ -30,12 +30,15 @@ class User extends Equatable {
         'username': username,
       };
 
-  /// Best human readable label: username > email > id > fallback.
+  /// Best human readable label: username > email > id > none.
+  ///
+  /// Empty when the user has no identity data; the UI then substitutes a
+  /// translated placeholder.
   String get displayName {
     if (username.trim().isNotEmpty) return username.trim();
     if (email.trim().isNotEmpty) return email.trim();
     if (id.trim().isNotEmpty) return id.trim();
-    return 'пользователь';
+    return '';
   }
 
   @override

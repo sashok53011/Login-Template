@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../models/action_result.dart';
 import '../providers/action_result_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/settings_provider.dart';
 import '../utils/validators.dart';
 
 /// Availability of a value that is being checked against the backend.
@@ -52,7 +53,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     setState(() {});
     _emailTimer?.cancel();
     final value = _emailCtrl.text.trim();
-    if (Validators.email(value) != null) {
+    if (Validators.email(value, _language) != null) {
       if (_emailAvail != Avail.idle) {
         setState(() => _emailAvail = Avail.idle);
       }
@@ -65,7 +66,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     setState(() {});
     _nameTimer?.cancel();
     final value = _usernameCtrl.text.trim();
-    if (Validators.username(value) != null) {
+    if (Validators.username(value, _language) != null) {
       if (_nameAvail != Avail.idle) {
         setState(() => _nameAvail = Avail.idle);
       }
@@ -73,6 +74,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
     _nameTimer = Timer(_debounce, () => _runNameCheck(value));
   }
+
+  String get _language => ref.read(settingsProvider).language;
 
   void _onPasswordChanged() => setState(() {});
 
@@ -151,9 +154,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       setResult.state = ActionResult(
         success: false,
         kind: ActionKind.register,
-        message: 'Регистрация не выполнена',
-        description: 'Email или username уже заняты. '
-            'Если это ваш аккаунт — войдите с помощью него.',
+        message: 'register.failTitle',
+        description: 'register.takenDesc',
         rows: rows(),
       );
       router.push('/register-result');
@@ -173,8 +175,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       setResult.state = ActionResult(
         success: true,
         kind: ActionKind.register,
-        message: 'Регистрация прошла успешно',
-        description: 'Аккаунт создан. Теперь войдите, чтобы продолжить.',
+        message: 'register.successTitle',
+        description: 'register.successDesc',
         rows: rows(),
       );
       router.go('/register-result');
@@ -182,7 +184,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       setResult.state = ActionResult(
         success: false,
         kind: ActionKind.register,
-        message: 'Регистрация не выполнена',
+        message: 'register.failTitle',
         description: _clean(e),
         rows: rows(),
       );
@@ -194,10 +196,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final rules = passwordRules(_passCtrl.text, _confirmCtrl.text);
+    final language = ref.watch(settingsProvider).language;
+    final rules = passwordRules(_passCtrl.text, _confirmCtrl.text, language);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Регистрация')),
+      appBar: AppBar(title: Text(translate('register.title', language))),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -215,7 +218,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     labelText: 'Email',
                     border: OutlineInputBorder(),
                   ),
-                  validator: Validators.email,
+                  validator: (v) => Validators.email(v, language),
                 ),
                 const SizedBox(height: 6),
                 AvailBadge(status: _emailAvail, detail: _emailErr),
@@ -223,12 +226,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 TextFormField(
                   controller: _usernameCtrl,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Username',
-                    helperText: 'Показывается на главном экране',
-                    border: OutlineInputBorder(),
+                    helperText: translate('register.usernameHint', language),
+                    border: const OutlineInputBorder(),
                   ),
-                  validator: Validators.username,
+                  validator: (v) => Validators.username(v, language),
                 ),
                 const SizedBox(height: 6),
                 AvailBadge(status: _nameAvail, detail: _nameErr),
@@ -237,7 +240,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _passCtrl,
                   obscureText: _obscure1,
                   decoration: InputDecoration(
-                    labelText: 'Пароль',
+                    labelText: translate('register.password', language),
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -246,7 +249,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       onPressed: () => setState(() => _obscure1 = !_obscure1),
                     ),
                   ),
-                  validator: Validators.password,
+                  validator: (v) => Validators.password(v, language),
                 ),
                 const SizedBox(height: 8),
                 RequirementsList(rules: rules),
@@ -255,7 +258,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _confirmCtrl,
                   obscureText: _obscure2,
                   decoration: InputDecoration(
-                    labelText: 'Повторите пароль',
+                    labelText:
+                        translate('register.confirmPassword', language),
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -264,8 +268,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       onPressed: () => setState(() => _obscure2 = !_obscure2),
                     ),
                   ),
-                  validator: (v) =>
-                      Validators.confirmPassword(v, _passCtrl.text),
+                  validator: (v) => Validators.confirmPassword(
+                    v,
+                    _passCtrl.text,
+                    language,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 FilledButton(
@@ -276,12 +283,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Зарегистрироваться'),
+                      : Text(translate('register.submit', language)),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: _loading ? null : () => context.go('/login'),
-                  child: const Text('Уже есть аккаунт? Войти'),
+                  child: Text(translate('register.haveAccount', language)),
                 ),
               ],
             ),
@@ -293,17 +300,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 }
 
 /// Shows whether the value in the field is free to use.
-class AvailBadge extends StatelessWidget {
+class AvailBadge extends ConsumerWidget {
   const AvailBadge({super.key, required this.status, this.detail});
 
   final Avail status;
 
-  /// Reason of the last failure, shown verbatim for [Avail.unknown].
+  /// Reason of the last failure (an `err.*` key), shown for [Avail.unknown].
   final String? detail;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final language = ref.watch(settingsProvider).language;
 
     switch (status) {
       case Avail.idle:
@@ -317,26 +325,40 @@ class AvailBadge extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             const SizedBox(width: 8),
-            Text('Проверяем…', style: theme.textTheme.bodySmall),
+            Text(
+              translate('common.checking', language),
+              style: theme.textTheme.bodySmall,
+            ),
           ],
         );
       case Avail.free:
         return _line(
           context,
           Icons.check_circle,
-          'Свободен',
+          translate('common.free', language),
           Colors.green,
         );
       case Avail.taken:
-        return _line(context, Icons.cancel, 'Занят', theme.colorScheme.error);
+        return _line(
+          context,
+          Icons.cancel,
+          translate('common.taken', language),
+          theme.colorScheme.error,
+        );
       case Avail.unknown:
         final reason = detail?.trim() ?? '';
         return _line(
           context,
           Icons.help_outline,
           reason.isEmpty
-              ? 'Не удалось проверить доступность'
-              : 'Не удалось проверить: $reason',
+              ? translate('err.availabilityCheck', language)
+              : translate(
+                  'err.availabilityCheckReason',
+                  language,
+                  args: <String, String>{
+                    'reason': translate(reason, language),
+                  },
+                ),
           theme.colorScheme.outline,
         );
     }

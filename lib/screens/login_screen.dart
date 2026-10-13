@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../models/action_result.dart';
 import '../providers/action_result_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/settings_provider.dart';
 import '../utils/validators.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -72,8 +73,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       setResult.state = ActionResult(
         success: true,
         kind: ActionKind.login,
-        message: 'Вход выполнен',
-        description: 'Добро пожаловать! Вы вошли в аккаунт.',
+        message: 'login.successTitle',
+        description: 'login.successDesc',
         rows: <ResultRow>[
           if (user.username.isNotEmpty)
             ResultRow(label: 'Username', value: user.username),
@@ -87,7 +88,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       setResult.state = ActionResult(
         success: false,
         kind: ActionKind.login,
-        message: 'Вход не выполнен',
+        message: 'login.failTitle',
         description: _clean(e),
         rows: <ResultRow>[
           if (email.isNotEmpty) ResultRow(label: 'Email', value: email),
@@ -101,8 +102,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final language = ref.watch(settingsProvider).language;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Вход')),
+      appBar: AppBar(title: Text(translate('login.title', language))),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -124,7 +127,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     labelText: 'Email',
                     border: OutlineInputBorder(),
                   ),
-                  validator: Validators.email,
+                  validator: (v) => Validators.email(v, language),
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -132,7 +135,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   obscureText: _obscure,
                   autofillHints: const <String>[AutofillHints.password],
                   decoration: InputDecoration(
-                    labelText: 'Пароль',
+                    labelText: translate('login.password', language),
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -141,7 +144,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onPressed: () => setState(() => _obscure = !_obscure),
                     ),
                   ),
-                  validator: Validators.password,
+                  validator: (v) => Validators.password(v, language),
                 ),
                 const SizedBox(height: 24),
                 FilledButton(
@@ -152,12 +155,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Войти'),
+                      : Text(translate('login.submit', language)),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: _loading ? null : () => context.go('/register'),
-                  child: const Text('Ещё нет аккаунта? Зарегистрироваться'),
+                  child: Text(translate('login.noAccount', language)),
                 ),
               ],
               ),

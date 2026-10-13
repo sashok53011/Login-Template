@@ -6,10 +6,350 @@
  *
  * API keys are intentionally absent: they live only on the phone
  * (flutter_secure_storage) and never reach this page or the server file.
+ *
+ * All copy is localised (ru / en / de) through STR / t(); the language and
+ * theme switchers live in /ui.js and are shared with the landing page.
  */
 
 const TOKEN_KEY = "ai_token";
 const USER_KEY = "ai_user";
+
+const STR = {
+  ru: {
+    pageTitle: "AI-провайдеры — app.devhorizon.online",
+    appTitle: "Список AI-провайдеров",
+    logout: "Выйти",
+    tabLogin: "Вход",
+    tabRegister: "Регистрация",
+    email: "Email",
+    password: "Пароль",
+    adminLogin: "Вход администратора (superuser)",
+    loginSubmit: "Войти",
+    userName: "Имя пользователя",
+    passwordRepeat: "Повтор пароля",
+    registerSubmit: "Зарегистрироваться",
+    addBtn: "+ Добавить провайдера",
+    reloadBtn: "Обновить",
+    trashBtn: "Корзина",
+    emptyNote: "Список пуст. Нажмите «Добавить провайдера».",
+    footerAdmin: "Панель администратора",
+    editorTitle: "Провайдер",
+    editorTitleNew: "Новый провайдер",
+    fieldName: "Название *",
+    fieldEnabled: "Включён",
+    fieldUrl: "URL *",
+    fieldModel: "Model *",
+    fieldPriority: "Приоритет (fallback) *",
+    fieldStatus: "Статус",
+    statusActive: "Работает",
+    statusDead: "Не работает — убрать у пользователей",
+    fieldLoginUrl: "Страница логина (URL)",
+    fieldGetKey: "Получить API-ключ (URL)",
+    fieldLogoUrl: "Логотип: ссылка (logoUrl)",
+    fieldLogoAsset: "Логотип: готовый (logoAsset)",
+    logoNone: "— не выбран —",
+    fieldOrigin: "Видят",
+    originAdmin: "Все пользователи",
+    originUser: "Только автор",
+    cancel: "Отмена",
+    save: "Сохранить",
+    trashTitle: "Корзина",
+    trashNote:
+      "Удалённые провайдеры хранятся здесь (последние 200) вместе с тем, кто их удалил. Восстановление возвращает провайдера под тем же id, а значит и ключи, которые пользователи уже ввели на устройствах.",
+    trashEmpty: "Корзина пуста.",
+    trashPurgeAll: "Очистить корзину",
+    trashClose: "Закрыть",
+    whoAdmin: " (админ)",
+    statsTitle: "Статистика проверок",
+    savedAt: "Сохранено: {when}",
+    neverSaved: "Изменений ещё не было",
+    saving: "Сохранение…",
+    notSaved: "Не сохранено",
+    badgeMine: "ваш",
+    badgeFrom: "от {name}",
+    badgeFromUser: "от пользователя",
+    badgeDead: "не работает",
+    rowPriority: "Приоритет",
+    linkLogin: "Страница логина",
+    linkGetKey: "Получить API-ключ",
+    toggleTitle: "Включён",
+    edit: "Редактировать",
+    remove: "Удалить",
+    confirmDelete: "Удалить провайдера «{name}»?",
+    badgeProposal: "предложение",
+    badgeCatalogue: "каталог",
+    trashDeleted: "Удалён {when}",
+    trashDeletedBy: "Удалён {when} — {name}",
+    restore: "Восстановить",
+    purgeOne: "Удалить навсегда",
+    confirmRestore: "Вернуть провайдера «{name}» в каталог?",
+    restoreFailed: "Не удалось восстановить.",
+    restoreFailedMsg: "Не удалось восстановить: {message}",
+    confirmPurgeOne:
+      "Удалить «{name}» из корзины навсегда? Восстановить будет нельзя.",
+    purgeFailedMsg: "Не удалось удалить: {message}",
+    confirmPurgeAll:
+      "Очистить корзину полностью? Восстановить будет нельзя.",
+    purgeAllFailedMsg: "Не удалось очистить корзину: {message}",
+    trashOpenFailed: "Не удалось открыть корзину: {message}",
+    saveFailedMsg: "Не удалось сохранить: {message}",
+    loadFailedMsg: "Не удалось загрузить список: {message}",
+    noteAdmin:
+      "Вы вошли как <strong>администратор</strong>: здесь задаётся каталог " +
+      "провайдеров для всех пользователей. Помеченные «не работает» " +
+      "убираются из списков пользователей. <strong>API-ключи</strong> здесь " +
+      "не хранятся — их вводят в приложении. Статистика проверок " +
+      "обновляется автоматически.",
+    noteUser:
+      "Каталог провайдеров ведёт администратор. Здесь можно " +
+      "<strong>включить</strong> нужных провайдеров — они появятся в " +
+      "Android-приложении. <strong>API-ключи</strong> на сервере не " +
+      "хранятся: их вводят только в приложении, они остаются на устройстве. " +
+      "Статистика проверок обновляется автоматически.",
+    errSession: "Нужно войти заново: сессия истекла.",
+    errAuth: "Неверный email или пароль.",
+    errEmailTaken: "Такой email уже занят. Если это ваш аккаунт — войдите.",
+    errRequest: "Запрос не удался (HTTP {status}).",
+    fieldTaken: "занято",
+    fieldEmail: "некорректный email",
+    fieldRequired: "обязательное поле",
+    fieldMin8: "минимум 8 символов",
+    fieldMismatch: "пароли не совпадают",
+    fieldUrlBad: "некорректная ссылка",
+  },
+  en: {
+    pageTitle: "AI providers — app.devhorizon.online",
+    appTitle: "AI providers list",
+    logout: "Sign out",
+    tabLogin: "Sign in",
+    tabRegister: "Register",
+    email: "Email",
+    password: "Password",
+    adminLogin: "Administrator sign-in (superuser)",
+    loginSubmit: "Sign in",
+    userName: "Username",
+    passwordRepeat: "Repeat password",
+    registerSubmit: "Register",
+    addBtn: "+ Add provider",
+    reloadBtn: "Reload",
+    trashBtn: "Bin",
+    emptyNote: "The list is empty. Press “Add provider”.",
+    footerAdmin: "Admin panel",
+    editorTitle: "Provider",
+    editorTitleNew: "New provider",
+    fieldName: "Name *",
+    fieldEnabled: "Enabled",
+    fieldUrl: "URL *",
+    fieldModel: "Model *",
+    fieldPriority: "Priority (fallback) *",
+    fieldStatus: "Status",
+    statusActive: "Working",
+    statusDead: "Not working — hide from users",
+    fieldLoginUrl: "Login page (URL)",
+    fieldGetKey: "Get API key (URL)",
+    fieldLogoUrl: "Logo: link (logoUrl)",
+    fieldLogoAsset: "Logo: built-in (logoAsset)",
+    logoNone: "— none —",
+    fieldOrigin: "Visible to",
+    originAdmin: "All users",
+    originUser: "Author only",
+    cancel: "Cancel",
+    save: "Save",
+    trashTitle: "Bin",
+    trashNote:
+      "Deleted providers are kept here (the last 200) together with who " +
+      "deleted them. Restoring brings the provider back under the same id, " +
+      "and therefore the keys users have already entered on their devices.",
+    trashEmpty: "The bin is empty.",
+    trashPurgeAll: "Empty the bin",
+    trashClose: "Close",
+    whoAdmin: " (admin)",
+    statsTitle: "Check statistics",
+    savedAt: "Saved: {when}",
+    neverSaved: "No changes yet",
+    saving: "Saving…",
+    notSaved: "Not saved",
+    badgeMine: "yours",
+    badgeFrom: "from {name}",
+    badgeFromUser: "from a user",
+    badgeDead: "not working",
+    rowPriority: "Priority",
+    linkLogin: "Login page",
+    linkGetKey: "Get API key",
+    toggleTitle: "Enabled",
+    edit: "Edit",
+    remove: "Delete",
+    confirmDelete: "Delete the provider “{name}”?",
+    badgeProposal: "proposal",
+    badgeCatalogue: "catalogue",
+    trashDeleted: "Deleted {when}",
+    trashDeletedBy: "Deleted {when} — {name}",
+    restore: "Restore",
+    purgeOne: "Delete permanently",
+    confirmRestore: "Restore the provider “{name}” to the catalogue?",
+    restoreFailed: "Could not restore.",
+    restoreFailedMsg: "Could not restore: {message}",
+    confirmPurgeOne:
+      "Delete “{name}” from the bin permanently? It cannot be restored.",
+    purgeFailedMsg: "Could not delete: {message}",
+    confirmPurgeAll: "Empty the bin completely? It cannot be undone.",
+    purgeAllFailedMsg: "Could not empty the bin: {message}",
+    trashOpenFailed: "Could not open the bin: {message}",
+    saveFailedMsg: "Could not save: {message}",
+    loadFailedMsg: "Could not load the list: {message}",
+    noteAdmin:
+      "You are signed in as an <strong>administrator</strong>: the provider " +
+      "catalogue for all users is configured here. Entries marked “not " +
+      "working” are removed from users' lists. <strong>API keys</strong> are " +
+      "not stored here — they are entered in the app. Check statistics " +
+      "refresh automatically.",
+    noteUser:
+      "The provider catalogue is maintained by an administrator. Here you " +
+      "can <strong>enable</strong> the providers you need — they will appear " +
+      "in the Android app. <strong>API keys</strong> are not stored on the " +
+      "server: they are entered only in the app and stay on the device. " +
+      "Check statistics refresh automatically.",
+    errSession: "Please sign in again: the session has expired.",
+    errAuth: "Wrong email or password.",
+    errEmailTaken: "This email is already taken. If it is your account, sign in.",
+    errRequest: "Request failed (HTTP {status}).",
+    fieldTaken: "taken",
+    fieldEmail: "invalid email",
+    fieldRequired: "required field",
+    fieldMin8: "at least 8 characters",
+    fieldMismatch: "passwords do not match",
+    fieldUrlBad: "invalid link",
+  },
+  de: {
+    pageTitle: "KI-Anbieter — app.devhorizon.online",
+    appTitle: "Liste der KI-Anbieter",
+    logout: "Abmelden",
+    tabLogin: "Anmeldung",
+    tabRegister: "Registrierung",
+    email: "E-Mail",
+    password: "Passwort",
+    adminLogin: "Administrator-Anmeldung (Superuser)",
+    loginSubmit: "Anmelden",
+    userName: "Benutzername",
+    passwordRepeat: "Passwort wiederholen",
+    registerSubmit: "Registrieren",
+    addBtn: "+ Anbieter hinzufügen",
+    reloadBtn: "Aktualisieren",
+    trashBtn: "Papierkorb",
+    emptyNote: "Die Liste ist leer. Klicken Sie auf „Anbieter hinzufügen“.",
+    footerAdmin: "Admin-Panel",
+    editorTitle: "Anbieter",
+    editorTitleNew: "Neuer Anbieter",
+    fieldName: "Name *",
+    fieldEnabled: "Aktiviert",
+    fieldUrl: "URL *",
+    fieldModel: "Model *",
+    fieldPriority: "Priorität (Fallback) *",
+    fieldStatus: "Status",
+    statusActive: "Funktioniert",
+    statusDead: "Funktioniert nicht — für Benutzer ausblenden",
+    fieldLoginUrl: "Anmeldeseite (URL)",
+    fieldGetKey: "API-Schlüssel erhalten (URL)",
+    fieldLogoUrl: "Logo: Link (logoUrl)",
+    fieldLogoAsset: "Logo: integriert (logoAsset)",
+    logoNone: "— nicht ausgewählt —",
+    fieldOrigin: "Sichtbar für",
+    originAdmin: "Alle Benutzer",
+    originUser: "Nur Autor",
+    cancel: "Abbrechen",
+    save: "Speichern",
+    trashTitle: "Papierkorb",
+    trashNote:
+      "Gelöschte Anbieter werden hier aufbewahrt (die letzten 200) zusammen " +
+      "mit der Person, die sie gelöscht hat. Eine Wiederherstellung bringt " +
+      "den Anbieter unter derselben id zurück, also auch die Schlüssel, die " +
+      "Benutzer bereits auf ihren Geräten eingegeben haben.",
+    trashEmpty: "Der Papierkorb ist leer.",
+    trashPurgeAll: "Papierkorb leeren",
+    trashClose: "Schließen",
+    whoAdmin: " (Admin)",
+    statsTitle: "Prüfstatistik",
+    savedAt: "Gespeichert: {when}",
+    neverSaved: "Noch keine Änderungen",
+    saving: "Speichern…",
+    notSaved: "Nicht gespeichert",
+    badgeMine: "Ihres",
+    badgeFrom: "von {name}",
+    badgeFromUser: "von einem Benutzer",
+    badgeDead: "funktioniert nicht",
+    rowPriority: "Priorität",
+    linkLogin: "Anmeldeseite",
+    linkGetKey: "API-Schlüssel erhalten",
+    toggleTitle: "Aktiviert",
+    edit: "Bearbeiten",
+    remove: "Löschen",
+    confirmDelete: "Anbieter „{name}“ löschen?",
+    badgeProposal: "Vorschlag",
+    badgeCatalogue: "Katalog",
+    trashDeleted: "Gelöscht {when}",
+    trashDeletedBy: "Gelöscht {when} — {name}",
+    restore: "Wiederherstellen",
+    purgeOne: "Endgültig löschen",
+    confirmRestore: "Anbieter „{name}“ in den Katalog zurückholen?",
+    restoreFailed: "Wiederherstellung fehlgeschlagen.",
+    restoreFailedMsg: "Wiederherstellung fehlgeschlagen: {message}",
+    confirmPurgeOne:
+      "„{name}“ endgültig aus dem Papierkorb löschen? Eine Wiederherstellung ist dann nicht möglich.",
+    purgeFailedMsg: "Löschen fehlgeschlagen: {message}",
+    confirmPurgeAll:
+      "Papierkorb vollständig leeren? Eine Wiederherstellung ist dann nicht möglich.",
+    purgeAllFailedMsg: "Papierkorb konnte nicht geleert werden: {message}",
+    trashOpenFailed: "Papierkorb konnte nicht geöffnet werden: {message}",
+    saveFailedMsg: "Speichern fehlgeschlagen: {message}",
+    loadFailedMsg: "Liste konnte nicht geladen werden: {message}",
+    noteAdmin:
+      "Sie sind als <strong>Administrator</strong> angemeldet: hier wird " +
+      "der Anbieter-Katalog für alle Benutzer verwaltet. Mit „funktioniert " +
+      "nicht“ markierte Einträge werden aus den Listen der Benutzer entfernt. " +
+      "<strong>API-Schlüssel</strong> werden hier nicht gespeichert — sie " +
+      "werden in der App eingegeben. Die Prüfstatistik wird automatisch " +
+      "aktualisiert.",
+    noteUser:
+      "Der Anbieter-Katalog wird von einem Administrator gepflegt. Hier " +
+      "können Sie die gewünschten Anbieter <strong>aktivieren</strong> — sie " +
+      "erscheinen dann in der Android-App. <strong>API-Schlüssel</strong> " +
+      "werden nicht auf dem Server gespeichert: sie werden nur in der App " +
+      "eingegeben und bleiben auf dem Gerät. Die Prüfstatistik wird " +
+      "automatisch aktualisiert.",
+    errSession: "Bitte erneut anmelden: die Sitzung ist abgelaufen.",
+    errAuth: "Falsche E-Mail oder falsches Passwort.",
+    errEmailTaken:
+      "Diese E-Mail ist bereits vergeben. Wenn es Ihr Konto ist, melden Sie sich an.",
+    errRequest: "Anfrage fehlgeschlagen (HTTP {status}).",
+    fieldTaken: "vergeben",
+    fieldEmail: "ungültige E-Mail",
+    fieldRequired: "Pflichtfeld",
+    fieldMin8: "mindestens 8 Zeichen",
+    fieldMismatch: "Passwörter stimmen nicht überein",
+    fieldUrlBad: "ungültiger Link",
+  },
+};
+
+function t(key, vars) {
+  const pack = STR[UI.lang] || STR.ru;
+  let text = pack[key] !== undefined ? pack[key] : STR.ru[key];
+  if (text === undefined) {
+    text = key;
+  }
+  if (vars) {
+    text = text.replace(/\{(\w+)\}/g, function (match, name) {
+      return vars[name] !== undefined ? vars[name] : match;
+    });
+  }
+  return text;
+}
+
+/* Fills every [data-i18n] placeholder in the static markup. */
+function applyI18n() {
+  document.querySelectorAll("[data-i18n]").forEach(function (node) {
+    node.textContent = t(node.getAttribute("data-i18n"));
+  });
+}
 
 const state = {
   token: localStorage.getItem(TOKEN_KEY) || null,
@@ -101,17 +441,17 @@ async function api(path, options) {
 
 function humanError(data, status) {
   if (status === 401) {
-    return "Нужно войти заново: сессия истекла.";
+    return t("errSession");
   }
 
   const raw = data && typeof data === "object" ? String(data.message || "") : "";
   const lower = raw.toLowerCase();
 
   if (lower.includes("failed to authenticate")) {
-    return "Неверный email или пароль.";
+    return t("errAuth");
   }
   if (lower.includes("already exists") || lower.includes("must be unique")) {
-    return "Такой email уже занят. Если это ваш аккаунт — войдите.";
+    return t("errEmailTaken");
   }
 
   const details = [];
@@ -127,28 +467,28 @@ function humanError(data, status) {
   if (details.length) {
     return (raw ? raw + " " : "") + details.join("\n");
   }
-  return raw || "Запрос не удался (HTTP " + status + ").";
+  return raw || t("errRequest", { status: status });
 }
 
 function localizeField(message) {
   const m = message.toLowerCase();
   if (m.includes("already exists") || m.includes("must be unique")) {
-    return "занято";
+    return t("fieldTaken");
   }
   if (m.includes("valid email")) {
-    return "некорректный email";
+    return t("fieldEmail");
   }
   if (m.includes("required")) {
-    return "обязательное поле";
+    return t("fieldRequired");
   }
   if (m.includes("at least 8")) {
-    return "минимум 8 символов";
+    return t("fieldMin8");
   }
   if (m.includes("do not match")) {
-    return "пароли не совпадают";
+    return t("fieldMismatch");
   }
   if (m.includes("valid url")) {
-    return "некорректная ссылка";
+    return t("fieldUrlBad");
   }
   return message;
 }
@@ -274,7 +614,7 @@ function statsBlock(provider) {
 
   const title = document.createElement("div");
   title.className = "stats-title";
-  title.textContent = "Статистика проверок";
+  title.textContent = t("statsTitle");
   wrap.appendChild(title);
 
   names.forEach(function (name) {
@@ -321,8 +661,8 @@ async function saveConfig() {
 function stampSync() {
   const updated = state.config && state.config.updated;
   el.syncStatus.textContent = updated
-    ? "Сохранено: " + updated.replace("T", " ").replace("Z", " UTC")
-    : "Изменений ещё не было";
+    ? t("savedAt", { when: updated.replace("T", " ").replace("Z", " UTC") })
+    : t("neverSaved");
 }
 
 /* --------------------------------------------------------------- render */
@@ -337,7 +677,7 @@ function render() {
   if (state.user) {
     el.who.textContent =
       (state.user.name || state.user.email || "") +
-      (state.user.isAdmin ? " (админ)" : "");
+      (state.user.isAdmin ? t("whoAdmin") : "");
   }
 
   if (loggedIn) {
@@ -375,16 +715,8 @@ function renderProviders() {
   el.emptyNote.hidden = list.length > 0;
 
   el.providersNote.innerHTML = state.canEdit
-    ? "Вы вошли как <strong>администратор</strong>: здесь задаётся каталог " +
-      "провайдеров для всех пользователей. Помеченные «не работает» " +
-      "убираются из списков пользователей. <strong>API-ключи</strong> здесь " +
-      "не хранятся — их вводят в приложении. Статистика проверок " +
-      "обновляется автоматически."
-    : "Каталог провайдеров ведёт администратор. Здесь можно " +
-      "<strong>включить</strong> нужных провайдеров — они появятся в " +
-      "Android-приложении. <strong>API-ключи</strong> на сервере не " +
-      "хранятся: их вводят только в приложении, они остаются на устройстве. " +
-      "Статистика проверок обновляется автоматически.";
+    ? t("noteAdmin")
+    : t("noteUser");
 
   list.forEach(function (provider) {
     el.providers.appendChild(providerCard(provider));
@@ -407,15 +739,17 @@ function providerCard(provider) {
     const badge = document.createElement("span");
     badge.className = "badge badge-user";
     badge.textContent = provider.mine
-      ? "ваш"
-      : "от " + (provider.authorName || "пользователя");
+      ? t("badgeMine")
+      : provider.authorName
+        ? t("badgeFrom", { name: provider.authorName })
+        : t("badgeFromUser");
     title.appendChild(badge);
   }
 
   if (provider.status === "dead") {
     const badge = document.createElement("span");
     badge.className = "badge";
-    badge.textContent = "не работает";
+    badge.textContent = t("badgeDead");
     title.appendChild(badge);
   }
   body.appendChild(title);
@@ -437,7 +771,7 @@ function providerCard(provider) {
     }
   }
 
-  addRow(dl, "Приоритет", String(provider.fallbackPriority));
+  addRow(dl, t("rowPriority"), String(provider.fallbackPriority));
   body.appendChild(dl);
 
   const block = statsBlock(provider);
@@ -448,10 +782,10 @@ function providerCard(provider) {
   const links = document.createElement("div");
   links.className = "links";
   if (provider.loginUrl) {
-    links.appendChild(extLink(provider.loginUrl, "Страница логина"));
+    links.appendChild(extLink(provider.loginUrl, t("linkLogin")));
   }
   if (provider.getApiKeyUrl) {
-    links.appendChild(extLink(provider.getApiKeyUrl, "Получить API-ключ"));
+    links.appendChild(extLink(provider.getApiKeyUrl, t("linkGetKey")));
   }
   if (links.childNodes.length) {
     body.appendChild(links);
@@ -464,7 +798,7 @@ function providerCard(provider) {
   const toggle = document.createElement("input");
   toggle.type = "checkbox";
   toggle.checked = !!provider.enabled;
-  toggle.title = "Включён";
+  toggle.title = t("toggleTitle");
   toggle.addEventListener("change", function () {
     provider.enabled = toggle.checked;
     card.classList.toggle("is-off", !provider.enabled);
@@ -475,13 +809,13 @@ function providerCard(provider) {
   // Only the superuser may change the catalogue.
   if (state.canEdit) {
     actions.appendChild(
-      miniButton("Редактировать", function () {
+      miniButton(t("edit"), function () {
         openEditor(provider.id);
       }),
     );
     actions.appendChild(
-      miniButton("Удалить", function () {
-        if (!confirm("Удалить провайдера «" + provider.name + "»?")) {
+      miniButton(t("remove"), function () {
+        if (!confirm(t("confirmDelete", { name: provider.name }))) {
           return;
         }
         state.config.providers = state.config.providers.filter(function (p) {
@@ -575,7 +909,7 @@ function openEditor(id) {
     : null;
 
   state.editingId = provider ? provider.id : null;
-  el.editorTitle.textContent = provider ? "Провайдер" : "Новый провайдер";
+  el.editorTitle.textContent = provider ? t("editorTitle") : t("editorTitleNew");
 
   const form = el.editorForm;
   form.reset();
@@ -679,7 +1013,7 @@ async function refreshTrash() {
     state.trash = data && Array.isArray(data.items) ? data.items : [];
   } catch (err) {
     state.trash = [];
-    showTrashError("Не удалось открыть корзину: " + err.message);
+    showTrashError(t("trashOpenFailed", { message: err.message }));
   }
 
   renderTrash();
@@ -702,7 +1036,8 @@ function renderTrash() {
     const badge = document.createElement("span");
     badge.className =
       "badge" + (item.source === "proposal" ? " badge-user" : "");
-    badge.textContent = item.source === "proposal" ? "предложение" : "каталог";
+    badge.textContent =
+      item.source === "proposal" ? t("badgeProposal") : t("badgeCatalogue");
     title.appendChild(badge);
     left.appendChild(title);
 
@@ -713,10 +1048,12 @@ function renderTrash() {
 
     const when = document.createElement("div");
     when.className = "trash-meta";
-    when.textContent =
-      "Удалён " +
-      shortTime(item.deletedAt) +
-      (item.deletedByName ? " — " + item.deletedByName : "");
+    when.textContent = item.deletedByName
+      ? t("trashDeletedBy", {
+          when: shortTime(item.deletedAt),
+          name: item.deletedByName,
+        })
+      : t("trashDeleted", { when: shortTime(item.deletedAt) });
     left.appendChild(when);
 
     row.appendChild(left);
@@ -724,12 +1061,12 @@ function renderTrash() {
     const actions = document.createElement("div");
     actions.className = "provider-actions";
     actions.appendChild(
-      miniButton("Восстановить", function () {
+      miniButton(t("restore"), function () {
         restoreFromTrash(provider.id, provider.name || provider.id);
       }),
     );
     actions.appendChild(
-      miniButton("Удалить навсегда", function () {
+      miniButton(t("purgeOne"), function () {
         purgeOne(provider.id, provider.name || provider.id);
       }),
     );
@@ -740,7 +1077,7 @@ function renderTrash() {
 }
 
 async function restoreFromTrash(id, name) {
-  if (!confirm("Вернуть провайдера «" + name + "» в каталог?")) return;
+  if (!confirm(t("confirmRestore", { name: name }))) return;
 
   showTrashError("");
   try {
@@ -752,21 +1089,17 @@ async function restoreFromTrash(id, name) {
       await loadConfig();
       render();
     } else {
-      showTrashError((res && res.reason) || "Не удалось восстановить.");
+      showTrashError((res && res.reason) || t("restoreFailed"));
     }
   } catch (err) {
-    showTrashError("Не удалось восстановить: " + err.message);
+    showTrashError(t("restoreFailedMsg", { message: err.message }));
   }
 
   await refreshTrash();
 }
 
 async function purgeOne(id, name) {
-  if (
-    !confirm(
-      "Удалить «" + name + "» из корзины навсегда? Восстановить будет нельзя.",
-    )
-  ) {
+  if (!confirm(t("confirmPurgeOne", { name: name }))) {
     return;
   }
 
@@ -774,14 +1107,14 @@ async function purgeOne(id, name) {
   try {
     await api("/api/ai-trash/" + encodeURIComponent(id), { method: "DELETE" });
   } catch (err) {
-    showTrashError("Не удалось удалить: " + err.message);
+    showTrashError(t("purgeFailedMsg", { message: err.message }));
   }
 
   await refreshTrash();
 }
 
 async function purgeAllTrash() {
-  if (!confirm("Очистить корзину полностью? Восстановить будет нельзя.")) {
+  if (!confirm(t("confirmPurgeAll"))) {
     return;
   }
 
@@ -789,7 +1122,7 @@ async function purgeAllTrash() {
   try {
     await api("/api/ai-trash", { method: "DELETE" });
   } catch (err) {
-    showTrashError("Не удалось очистить корзину: " + err.message);
+    showTrashError(t("purgeAllFailedMsg", { message: err.message }));
   }
 
   await refreshTrash();
@@ -804,13 +1137,13 @@ async function persist() {
     return;
   }
   pending = true;
-  el.syncStatus.textContent = "Сохранение…";
+  el.syncStatus.textContent = t("saving");
   try {
     await saveConfig();
     setError("");
   } catch (err) {
-    setError("Не удалось сохранить: " + err.message);
-    el.syncStatus.textContent = "Не сохранено";
+    setError(t("saveFailedMsg", { message: err.message }));
+    el.syncStatus.textContent = t("notSaved");
   } finally {
     pending = false;
   }
@@ -830,7 +1163,7 @@ async function refresh() {
       setAuthNote(err.message);
       return;
     }
-    setError("Не удалось загрузить список: " + err.message);
+    setError(t("loadFailedMsg", { message: err.message }));
   }
 }
 
@@ -898,5 +1231,16 @@ el.trashClose.addEventListener("click", function () {
 });
 el.trashPurgeAll.addEventListener("click", purgeAllTrash);
 
+/* Switching language re-renders everything, including the provider cards,
+ * the toolbar notes and the open dialogs' labels. */
+UI.onChange(function () {
+  applyI18n();
+  document.title = t("pageTitle");
+  render();
+});
+
+UI.mount();
+applyI18n();
+document.title = t("pageTitle");
 el.host.textContent = location.host;
 showAuth();

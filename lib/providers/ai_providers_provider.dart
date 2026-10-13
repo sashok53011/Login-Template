@@ -10,6 +10,7 @@ import '../services/ai_stats_service.dart';
 import '../services/provider_test_service.dart';
 import '../services/secure_storage_service.dart';
 import 'auth_provider.dart';
+import 'settings_provider.dart';
 
 final aiConfigSyncServiceProvider = Provider<AiConfigSyncService>((ref) {
   return AiConfigSyncService(ref.watch(apiClientProvider));
@@ -120,6 +121,22 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
 
   String? get _userId => _ref.read(authProvider).user?.id;
 
+  /// Current UI language, used to turn `err.*` keys into display text.
+  String get _language => _ref.read(settingsProvider).language;
+
+  String _message(String key, {Map<String, String>? args}) =>
+      translate(key, _language, args: args);
+
+  /// Drops the `Exception: ` prefix, then translates the (possibly composite)
+  /// error message.
+  String _cleanError(Object error) {
+    final text = error.toString();
+    const prefix = 'Exception: ';
+    final clean =
+        text.startsWith(prefix) ? text.substring(prefix.length) : text;
+    return translate(clean, _language);
+  }
+
   /// Synchronisation is on by default: the catalogue is the only place provider
   /// definitions come from.
   Future<bool> _isSyncEnabled() async {
@@ -162,7 +179,7 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
       await _saveSnapshot(userId, items);
       await refreshStats();
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: _cleanError(e));
     }
   }
 
@@ -193,14 +210,14 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
 
     if (provider.isDead) {
       state = state.copyWith(
-        error: 'Провайдер помечен администратором как неработающий.',
+        error: _message('err.providerDead'),
       );
       return null;
     }
 
     final apiKey = provider.apiKey ?? '';
     if (apiKey.isEmpty) {
-      state = state.copyWith(error: 'Сначала введите API-ключ.');
+      state = state.copyWith(error: _message('err.enterApiKey'));
       return null;
     }
 
@@ -219,9 +236,16 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
     // failure, so the administrator can see which models people cannot use.
     final offers = result.offersModel(provider.model);
     final ok = result.ok && offers;
-    final error = result.ok
-        ? (offers ? null : 'Модель ${provider.model} не предлагается')
+    final String? errorKey = result.ok
+        ? (offers ? null : 'err.modelNotOffered')
         : result.error;
+    final Map<String, String>? errorArgs = errorKey == 'err.modelNotOffered'
+        ? <String, String>{'model': provider.model}
+        : (result.status != null
+            ? <String, String>{'status': '${result.status}'}
+            : null);
+    final String? error =
+        errorKey == null ? null : _message(errorKey, args: errorArgs);
 
     try {
       final stats = await _statsService.report(
@@ -239,7 +263,7 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
     } catch (e) {
       state = state.copyWith(
         testing: state.testing.where((String t) => t != id).toSet(),
-        error: e.toString(),
+        error: _cleanError(e),
       );
     }
 
@@ -297,7 +321,7 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
       );
       await _saveSnapshot(userId, merged);
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: _cleanError(e));
     }
   }
 
@@ -360,7 +384,7 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
       await _storeKey(userId, local);
       await _pushLocal(userId, <AiProvider>[...state.items, local]);
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: _cleanError(e));
       rethrow;
     }
   }
@@ -394,7 +418,7 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
       final list = <AiProvider>[...state.items]..[index] = updated;
       await _pushLocal(userId, list);
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: _cleanError(e));
       rethrow;
     }
   }
@@ -413,7 +437,7 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
         state.items.where((p) => p.id != id).toList(),
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: _cleanError(e));
       rethrow;
     }
   }

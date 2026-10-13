@@ -1,11 +1,48 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="day">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>AI Providers — app.devhorizon.online</title>
-    <link rel="stylesheet" href="/styles.css?v=1" />
+    <script>
+      /* Apply the saved language and theme before the first paint, so a night
+         theme never flashes a white page. Mirrors the logic in /ui.js. */
+      (function () {
+        var LANGS = ["ru", "en", "de"];
+        var THEMES = [
+          "day",
+          "day-yellow",
+          "day-red",
+          "day-green",
+          "day-orange",
+          "night-red",
+          "night-blue",
+          "night-yellow",
+          "night-green",
+          "night-orange",
+        ];
+        var root = document.documentElement;
+        var lang = null;
+        var theme = null;
+        try {
+          lang = localStorage.getItem("ui_lang");
+        } catch (e) {}
+        try {
+          theme = localStorage.getItem("ui_theme");
+        } catch (e) {}
+        if (LANGS.indexOf(lang) < 0) {
+          var nav = String(navigator.language || "").slice(0, 2).toLowerCase();
+          lang = LANGS.indexOf(nav) >= 0 ? nav : "ru";
+        }
+        if (THEMES.indexOf(theme) < 0) {
+          theme = "day";
+        }
+        root.setAttribute("lang", lang);
+        root.setAttribute("data-theme", theme);
+      })();
+    </script>
+    <link rel="stylesheet" href="/styles.css?v=2" />
   </head>
   <body>
     <div id="app">
@@ -13,15 +50,32 @@
         <div class="brand">
           <span class="brand-mark">AI</span>
           <div>
-            <h1>AI Providers list</h1>
+            <h1 data-i18n="appTitle">AI Providers list</h1>
             <p class="muted" id="host-label">app.devhorizon.online</p>
           </div>
         </div>
-        <div class="topbar-actions" id="topbar-actions" hidden>
-          <span class="who" id="who"></span>
-          <button class="btn btn-ghost" id="logout-btn" type="button">
-            Выйти
-          </button>
+        <div class="topbar-right">
+          <div class="ui-controls" id="ui-controls">
+            <label class="ui-field">
+              <span id="ui-lang-label">Язык</span>
+              <select id="ui-lang"></select>
+            </label>
+            <label class="ui-field">
+              <span id="ui-theme-label">Тема</span>
+              <select id="ui-theme"></select>
+            </label>
+          </div>
+          <div class="topbar-actions" id="topbar-actions" hidden>
+            <span class="who" id="who"></span>
+            <button
+              class="btn btn-ghost"
+              id="logout-btn"
+              type="button"
+              data-i18n="logout"
+            >
+              Выйти
+            </button>
+          </div>
         </div>
       </header>
 
@@ -29,17 +83,22 @@
         <!-- ---------------------------------------------------- auth view -->
         <section id="auth-view" class="card auth-card" hidden>
           <div class="tabs">
-            <button class="tab is-active" data-tab="login" type="button">
+            <button
+              class="tab is-active"
+              data-tab="login"
+              type="button"
+              data-i18n="tabLogin"
+            >
               Вход
             </button>
-            <button class="tab" data-tab="register" type="button">
+            <button class="tab" data-tab="register" type="button" data-i18n="tabRegister">
               Регистрация
             </button>
           </div>
 
           <form id="login-form" class="form">
             <label>
-              Email
+              <span data-i18n="email">Email</span>
               <input
                 type="email"
                 name="identity"
@@ -48,7 +107,7 @@
               />
             </label>
             <label>
-              Пароль
+              <span data-i18n="password">Пароль</span>
               <input
                 type="password"
                 name="password"
@@ -57,19 +116,23 @@
               />
             </label>
             <label class="row">
-              <span>Вход администратора (superuser)</span>
+              <span data-i18n="adminLogin"
+                >Вход администратора (superuser)</span
+              >
               <input type="checkbox" id="admin-login" />
             </label>
-            <button class="btn btn-primary" type="submit">Войти</button>
+            <button class="btn btn-primary" type="submit" data-i18n="loginSubmit">
+              Войти
+            </button>
           </form>
 
           <form id="register-form" class="form" hidden>
             <label>
-              Email
+              <span data-i18n="email">Email</span>
               <input type="email" name="email" autocomplete="email" required />
             </label>
             <label>
-              Имя пользователя
+              <span data-i18n="userName">Имя пользователя</span>
               <input
                 type="text"
                 name="name"
@@ -79,7 +142,7 @@
               />
             </label>
             <label>
-              Пароль
+              <span data-i18n="password">Пароль</span>
               <input
                 type="password"
                 name="password"
@@ -89,7 +152,7 @@
               />
             </label>
             <label>
-              Повтор пароля
+              <span data-i18n="passwordRepeat">Повтор пароля</span>
               <input
                 type="password"
                 name="passwordConfirm"
@@ -98,7 +161,11 @@
                 required
               />
             </label>
-            <button class="btn btn-primary" type="submit">
+            <button
+              class="btn btn-primary"
+              type="submit"
+              data-i18n="registerSubmit"
+            >
               Зарегистрироваться
             </button>
           </form>
@@ -109,13 +176,29 @@
         <!-- ----------------------------------------------- providers view -->
         <section id="providers-view" hidden>
           <div class="toolbar">
-            <button class="btn btn-primary" id="add-btn" type="button">
+            <button
+              class="btn btn-primary"
+              id="add-btn"
+              type="button"
+              data-i18n="addBtn"
+            >
               + Добавить провайдера
             </button>
-            <button class="btn btn-ghost" id="reload-btn" type="button">
+            <button
+              class="btn btn-ghost"
+              id="reload-btn"
+              type="button"
+              data-i18n="reloadBtn"
+            >
               Обновить
             </button>
-            <button class="btn btn-ghost" id="trash-btn" type="button" hidden>
+            <button
+              class="btn btn-ghost"
+              id="trash-btn"
+              type="button"
+              hidden
+              data-i18n="trashBtn"
+            >
               Корзина
             </button>
             <span class="spacer"></span>
@@ -125,7 +208,7 @@
           <p class="note" id="providers-note"></p>
 
           <div id="providers" class="providers"></div>
-          <p class="empty" id="empty-note" hidden>
+          <p class="empty" id="empty-note" hidden data-i18n="emptyNote">
             Список пуст. Нажмите «Добавить провайдера».
           </p>
         </section>
@@ -136,67 +219,81 @@
       <footer class="footer muted">
         <span>app.devhorizon.online</span>
         <span>·</span>
-        <a href="/_/">Панель администратора</a>
+        <a href="/_/" data-i18n="footerAdmin">Панель администратора</a>
       </footer>
     </div>
 
     <!-- ------------------------------------------------------ editor modal -->
     <dialog id="editor">
       <form id="editor-form" class="form">
-        <h2 id="editor-title">Провайдер</h2>
+        <h2 id="editor-title" data-i18n="editorTitle">Провайдер</h2>
 
         <label>
-          Название *
+          <span data-i18n="fieldName">Название *</span>
           <input type="text" name="name" required />
         </label>
 
         <label class="row">
-          <span>Включён</span>
+          <span data-i18n="fieldEnabled">Включён</span>
           <input type="checkbox" name="enabled" />
         </label>
 
         <label>
-          URL *
-          <input type="url" name="url" placeholder="https://api.example.com/v1" required />
+          <span data-i18n="fieldUrl">URL *</span>
+          <input
+            type="url"
+            name="url"
+            placeholder="https://api.example.com/v1"
+            required
+          />
         </label>
 
         <label>
-          Model *
+          <span data-i18n="fieldModel">Model *</span>
           <input type="text" name="model" required />
         </label>
 
         <label>
-          Приоритет (fallback) *
-          <input type="number" name="fallbackPriority" min="0" step="1" value="0" required />
+          <span data-i18n="fieldPriority">Приоритет (fallback) *</span>
+          <input
+            type="number"
+            name="fallbackPriority"
+            min="0"
+            step="1"
+            value="0"
+            required
+          />
         </label>
 
         <label>
-          Статус
+          <span data-i18n="fieldStatus">Статус</span>
           <select name="status">
-            <option value="active">Работает</option>
-            <option value="dead">Не работает — убрать у пользователей</option>
+            <option value="active" data-i18n="statusActive">Работает</option>
+            <option value="dead" data-i18n="statusDead">
+              Не работает — убрать у пользователей
+            </option>
           </select>
         </label>
 
         <label>
-          Страница логина (URL)
+          <span data-i18n="fieldLoginUrl">Страница логина (URL)</span>
           <input type="url" name="loginUrl" />
         </label>
 
         <label>
-          Получить API-ключ (URL)
+          <span data-i18n="fieldGetKey">Получить API-ключ (URL)</span>
           <input type="url" name="getApiKeyUrl" />
         </label>
 
         <label>
-          Логотип: ссылка (logoUrl)
+          <span data-i18n="fieldLogoUrl">Логотип: ссылка (logoUrl)</span>
           <input type="url" name="logoUrl" />
         </label>
 
         <label>
-          Логотип: готовый (logoAsset)
+          <span data-i18n="fieldLogoAsset">Логотип: готовый (logoAsset)</span>
           <select name="logoAsset">
-            <option value="">— не выбран —</option>
+            <option value="" data-i18n="logoNone">— не выбран —</option>
             <option value="openai">OpenAI</option>
             <option value="anthropic">Anthropic</option>
             <option value="google-gemini">Google Gemini</option>
@@ -211,44 +308,66 @@
         </label>
 
         <label>
-          Видят
+          <span data-i18n="fieldOrigin">Видят</span>
           <select name="origin">
-            <option value="admin">Все пользователи</option>
-            <option value="user">Только автор</option>
+            <option value="admin" data-i18n="originAdmin">
+              Все пользователи
+            </option>
+            <option value="user" data-i18n="originUser">Только автор</option>
           </select>
         </label>
 
         <div class="dialog-actions">
-          <button class="btn btn-ghost" type="button" id="editor-cancel">
+          <button
+            class="btn btn-ghost"
+            type="button"
+            id="editor-cancel"
+            data-i18n="cancel"
+          >
             Отмена
           </button>
-          <button class="btn btn-primary" type="submit">Сохранить</button>
+          <button class="btn btn-primary" type="submit" data-i18n="save">
+            Сохранить
+          </button>
         </div>
       </form>
     </dialog>
 
     <dialog id="trash">
       <div class="trash-body">
-        <h2>Корзина</h2>
-        <p class="note">
+        <h2 data-i18n="trashTitle">Корзина</h2>
+        <p class="note" data-i18n="trashNote">
           Удалённые провайдеры хранятся здесь (последние 200) вместе с тем, кто
           их удалил. Восстановление возвращает провайдера под тем же id, а
           значит и ключи, которые пользователи уже ввели на устройствах.
         </p>
         <div id="trash-list" class="providers"></div>
-        <p class="empty" id="trash-empty" hidden>Корзина пуста.</p>
+        <p class="empty" id="trash-empty" hidden data-i18n="trashEmpty">
+          Корзина пуста.
+        </p>
         <p class="error" id="trash-error" hidden></p>
         <div class="dialog-actions">
-          <button class="btn btn-ghost" type="button" id="trash-purge-all">
+          <button
+            class="btn btn-ghost"
+            type="button"
+            id="trash-purge-all"
+            data-i18n="trashPurgeAll"
+          >
             Очистить корзину
           </button>
-          <button class="btn btn-primary" type="button" id="trash-close">
+          <button
+            class="btn btn-primary"
+            type="button"
+            id="trash-close"
+            data-i18n="trashClose"
+          >
             Закрыть
           </button>
         </div>
       </div>
     </dialog>
 
-    <script src="app.js?v=7"></script>
+    <script src="/ui.js?v=1"></script>
+    <script src="app.js?v=8"></script>
   </body>
 </html>

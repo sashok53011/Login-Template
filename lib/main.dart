@@ -1,13 +1,17 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/app_theme.dart';
 import 'providers/auth_provider.dart';
+import 'providers/settings_provider.dart';
 import 'screens/action_result_screen.dart';
 import 'screens/ai_providers_list_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
+import 'screens/settings_screen.dart';
 import 'screens/splash_screen.dart';
 
 /// Routes an anonymous user is allowed to visit.
@@ -96,6 +100,12 @@ class _LoginAppState extends ConsumerState<LoginApp> {
           path: '/ai-providers',
           builder: (context, state) => const AiProvidersListScreen(),
         ),
+        // Authenticated route on purpose: it is not in [kAuthRoutes], so the
+        // redirect sends an anonymous visitor back to /login.
+        GoRoute(
+          path: '/settings',
+          builder: (context, state) => const SettingsScreen(),
+        ),
       ],
     );
   }
@@ -112,21 +122,27 @@ class _LoginAppState extends ConsumerState<LoginApp> {
     // Re-run route redirects whenever the auth state changes.
     ref.listen(authProvider, (previous, next) => _refresh.value++);
 
+    final settings = ref.watch(settingsProvider);
+
     return MaterialApp.router(
       title: 'DevHorizon Login',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.indigo,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      themeMode: ThemeMode.system,
+      locale: Locale(settings.language),
+      supportedLocales: const <Locale>[
+        Locale('ru'),
+        Locale('en'),
+        Locale('de'),
+      ],
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      // A single scheme is used for both slots; the variant itself decides
+      // whether the app is light or dark via [themeMode].
+      theme: themeFor(settings.theme),
+      darkTheme: themeFor(settings.theme),
+      themeMode: settings.theme.isDark ? ThemeMode.dark : ThemeMode.light,
       routerConfig: _router,
     );
   }

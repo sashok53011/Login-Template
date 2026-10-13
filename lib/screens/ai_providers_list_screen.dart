@@ -9,6 +9,7 @@ import '../models/ai_provider.dart';
 import '../models/ai_stats.dart';
 import '../providers/ai_providers_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/settings_provider.dart';
 import '../services/provider_test_service.dart';
 
 /// The provider catalogue comes from the server and is maintained by a
@@ -36,17 +37,17 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
     final state = ref.watch(aiProvidersProvider);
 
     if (!auth.isLoggedIn) {
-      return const Scaffold(
-        body: Center(child: Text('Требуется авторизация')),
+      return Scaffold(
+        body: Center(child: Text(tr(ref, 'ai.requiresAuth'))),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI-провайдеры'),
+        title: Text(tr(ref, 'ai.title')),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Обновить',
+            tooltip: tr(ref, 'ai.refresh'),
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.read(aiProvidersProvider.notifier).refresh(),
           ),
@@ -55,7 +56,7 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showEditor(null),
         icon: const Icon(Icons.add),
-        label: const Text('Добавить провайдера'),
+        label: Text(tr(ref, 'ai.addProvider')),
       ),
       body: SafeArea(
         child: Column(
@@ -89,7 +90,7 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
                     TextButton(
                       onPressed: () =>
                           ref.read(aiProvidersProvider.notifier).refresh(),
-                      child: const Text('Повторить'),
+                      child: Text(tr(ref, 'common.retry')),
                     ),
                   ],
                 ),
@@ -98,12 +99,11 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
               child: state.isLoading && state.items.isEmpty
                   ? const Center(child: CircularProgressIndicator())
                   : state.items.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Padding(
-                            padding: EdgeInsets.all(24),
+                            padding: const EdgeInsets.all(24),
                             child: Text(
-                              'Список пуст. Каталог провайдеров заполняет '
-                              'администратор.',
+                              tr(ref, 'ai.emptyList'),
                               textAlign: TextAlign.center,
                             ),
                           ),
@@ -139,6 +139,8 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
     );
   }
 
+  String get _language => ref.read(settingsProvider).language;
+
   Future<void> _showApiKeyDialog(AiProvider provider) async {
     final saved = await showDialog<String>(
       context: context,
@@ -150,7 +152,7 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
     await ref.read(aiProvidersProvider.notifier).setApiKey(provider.id, saved);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('API-ключ сохранён на устройстве')),
+      SnackBar(content: Text(translate('ai.apiKeySaved', _language))),
     );
   }
 
@@ -193,16 +195,27 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            provider == null
-                ? 'Провайдер добавлен и отправлен администратору'
-                : 'Провайдер обновлён',
+            translate(
+              provider == null ? 'ai.providerAdded' : 'ai.providerUpdated',
+              _language,
+            ),
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: ${_cleanError(e)}')),
+        SnackBar(
+          content: Text(
+            translate(
+              'ai.errorPrefix',
+              _language,
+              args: <String, String>{
+                'error': translate(_cleanError(e), _language),
+              },
+            ),
+          ),
+        ),
       );
     }
   }
@@ -216,16 +229,22 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Удалить провайдера?'),
-        content: Text('Будет удалён ваш провайдер: ${provider.name}'),
+        title: Text(translate('ai.deleteTitle', _language)),
+        content: Text(
+          translate(
+            'ai.deleteConfirm',
+            _language,
+            args: <String, String>{'name': provider.name},
+          ),
+        ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
+            child: Text(translate('common.cancel', _language)),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Удалить'),
+            child: Text(translate('common.delete', _language)),
           ),
         ],
       ),
@@ -237,7 +256,17 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: ${_cleanError(e)}')),
+        SnackBar(
+          content: Text(
+            translate(
+              'ai.errorPrefix',
+              _language,
+              args: <String, String>{
+                'error': translate(_cleanError(e), _language),
+              },
+            ),
+          ),
+        ),
       );
     }
   }
@@ -250,8 +279,12 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
     if (!mounted || result == null) return;
 
     if (!result.ok) {
+      final key = result.error ?? 'ai.testFailed';
+      final args = result.status != null
+          ? <String, String>{'status': '${result.status}'}
+          : null;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.error ?? 'Проверка не удалась')),
+        SnackBar(content: Text(translate(key, _language, args: args))),
       );
       return;
     }
@@ -268,16 +301,17 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
 
 /// Definition editor for the user's own providers. The shared catalogue is the
 /// administrator's, so this is never reachable for their entries.
-class _ProviderEditorDialog extends StatefulWidget {
+class _ProviderEditorDialog extends ConsumerStatefulWidget {
   const _ProviderEditorDialog({this.provider});
 
   final AiProvider? provider;
 
   @override
-  State<_ProviderEditorDialog> createState() => _ProviderEditorDialogState();
+  ConsumerState<_ProviderEditorDialog> createState() =>
+      _ProviderEditorDialogState();
 }
 
-class _ProviderEditorDialogState extends State<_ProviderEditorDialog> {
+class _ProviderEditorDialogState extends ConsumerState<_ProviderEditorDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _name;
   late final TextEditingController _url;
@@ -328,7 +362,9 @@ class _ProviderEditorDialogState extends State<_ProviderEditorDialog> {
     final isNew = widget.provider == null;
 
     return AlertDialog(
-      title: Text(isNew ? 'Новый провайдер' : 'Ваш провайдер'),
+      title: Text(
+        tr(ref, isNew ? 'ai.newProvider' : 'ai.yourProvider'),
+      ),
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
@@ -342,25 +378,22 @@ class _ProviderEditorDialogState extends State<_ProviderEditorDialog> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text(
-                      'Провайдер появится у администратора с пометкой, что его '
-                      'добавили вы. Остальные пользователи увидят его после '
-                      'того, как администратор его опубликует. API-ключ сюда '
-                      'не входит — он остаётся на устройстве.',
+                      tr(ref, 'ai.providerNewHint'),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
-                _field(_name, 'Название', required: true),
+                _field(_name, tr(ref, 'ai.fieldName'), required: true),
                 _field(_url, 'URL', required: true),
                 _field(_model, 'Model', required: true),
-                _field(_priority, 'Приоритет', numeric: true),
-                _field(_loginUrl, 'Страница логина (URL)'),
-                _field(_getApiKeyUrl, 'Получить API-ключ (URL)'),
-                _field(_logoUrl, 'Логотип: ссылка'),
-                _field(_logoAsset, 'Логотип: имя в assets/logos'),
+                _field(_priority, tr(ref, 'ai.fieldPriority'), numeric: true),
+                _field(_loginUrl, tr(ref, 'ai.fieldLoginUrl')),
+                _field(_getApiKeyUrl, tr(ref, 'ai.fieldGetApiKeyUrl')),
+                _field(_logoUrl, tr(ref, 'ai.fieldLogoUrl')),
+                _field(_logoAsset, tr(ref, 'ai.fieldLogoAsset')),
                 SwitchListTile(
                   value: _enabled,
                   onChanged: (v) => setState(() => _enabled = v),
-                  title: const Text('Включён'),
+                  title: Text(tr(ref, 'ai.fieldEnabled')),
                   contentPadding: EdgeInsets.zero,
                 ),
               ],
@@ -371,9 +404,12 @@ class _ProviderEditorDialogState extends State<_ProviderEditorDialog> {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Отмена'),
+          child: Text(tr(ref, 'common.cancel')),
         ),
-        FilledButton(onPressed: _save, child: const Text('Сохранить')),
+        FilledButton(
+          onPressed: _save,
+          child: Text(tr(ref, 'common.save')),
+        ),
       ],
     );
   }
@@ -396,7 +432,7 @@ class _ProviderEditorDialogState extends State<_ProviderEditorDialog> {
         validator: (value) {
           if (!required) return null;
           return value == null || value.trim().isEmpty
-              ? 'Обязательное поле'
+              ? translate('valid.required', ref.read(settingsProvider).language)
               : null;
         },
       ),
@@ -426,16 +462,16 @@ class _ProviderEditorDialogState extends State<_ProviderEditorDialog> {
 ///
 /// A stateful widget on purpose: it owns the controller, so the controller
 /// cannot outlive the closing animation of the dialog.
-class _ApiKeyDialog extends StatefulWidget {
+class _ApiKeyDialog extends ConsumerStatefulWidget {
   const _ApiKeyDialog({required this.provider});
 
   final AiProvider provider;
 
   @override
-  State<_ApiKeyDialog> createState() => _ApiKeyDialogState();
+  ConsumerState<_ApiKeyDialog> createState() => _ApiKeyDialogState();
 }
 
-class _ApiKeyDialogState extends State<_ApiKeyDialog> {
+class _ApiKeyDialogState extends ConsumerState<_ApiKeyDialog> {
   late final TextEditingController _controller;
   final FocusNode _focusNode = FocusNode();
   bool _obscure = true;
@@ -472,7 +508,11 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
 
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('В буфере обмена нет текста')),
+        SnackBar(
+          content: Text(
+            translate('ai.clipboardEmpty', ref.read(settingsProvider).language),
+          ),
+        ),
       );
       return;
     }
@@ -485,6 +525,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
   @override
   Widget build(BuildContext context) {
     final provider = widget.provider;
+    final language = ref.watch(settingsProvider).language;
 
     return AlertDialog(
       title: Text(provider.name),
@@ -496,7 +537,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
             _InfoLine(label: 'URL', value: provider.url),
             _InfoLine(label: 'Model', value: provider.model),
             _InfoLine(
-              label: 'Приоритет',
+              label: translate('ai.fieldPriority', language),
               value: provider.fallbackPriority.toString(),
             ),
             const SizedBox(height: 12),
@@ -506,10 +547,13 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
               obscureText: _obscure,
               decoration: InputDecoration(
                 labelText: 'API Key',
-                helperText: 'Хранится только на этом устройстве',
+                helperText: translate('ai.apiKeyHint', language),
                 border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
-                  tooltip: _obscure ? 'Показать' : 'Скрыть',
+                  tooltip: translate(
+                    _obscure ? 'ai.show' : 'ai.hide',
+                    language,
+                  ),
                   icon: Icon(
                     _obscure ? Icons.visibility : Icons.visibility_off,
                   ),
@@ -523,7 +567,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
                 TextButton.icon(
                   onPressed: _focused ? _pasteFromClipboard : null,
                   icon: const Icon(Icons.content_paste),
-                  label: const Text('Вставить из буфера'),
+                  label: Text(translate('ai.paste', language)),
                 ),
                 TextButton.icon(
                   onPressed: _controller.text.isEmpty
@@ -534,15 +578,13 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
                           });
                         },
                   icon: const Icon(Icons.clear),
-                  label: const Text('Очистить'),
+                  label: Text(translate('ai.clear', language)),
                 ),
               ],
             ),
             const SizedBox(height: 4),
             Text(
-              'Сам провайдер и его адрес задаются администратором. '
-              'Ключ можно получить по ссылке «Получить API-ключ» и вставить '
-              'сюда.',
+              translate('ai.apiKeyNote', language),
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -551,11 +593,11 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Отмена'),
+          child: Text(translate('common.cancel', language)),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('Сохранить'),
+          child: Text(translate('common.save', language)),
         ),
       ],
     );
@@ -563,7 +605,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
 }
 
 /// Explains where the list comes from and offers the manual refresh.
-class _CatalogueCard extends StatelessWidget {
+class _CatalogueCard extends ConsumerWidget {
   const _CatalogueCard({
     required this.state,
     required this.onSyncNow,
@@ -575,8 +617,9 @@ class _CatalogueCard extends StatelessWidget {
   final ValueChanged<bool> onToggleSync;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final language = ref.watch(settingsProvider).language;
 
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -591,7 +634,7 @@ class _CatalogueCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Каталог провайдеров ведёт администратор',
+                    translate('ai.catalogueTitle', language),
                     style: theme.textTheme.titleSmall,
                   ),
                 ),
@@ -599,19 +642,23 @@ class _CatalogueCard extends StatelessWidget {
               ],
             ),
             Text(
-              state.syncEnabled
-                  ? 'Выключенные провайдеры сверяются с каталогом: если '
-                      'провайдер помечен как неработающий, он убирается из '
-                      'списка. Включённые не трогаются.'
-                  : 'Синхронизация выключена: показан последний сохранённый '
-                      'список, изменения с сервера не подхватываются.',
+              translate(
+                state.syncEnabled ? 'ai.syncOnDesc' : 'ai.syncOffDesc',
+                language,
+              ),
               style: theme.textTheme.bodySmall,
             ),
             if (state.syncEnabled && state.syncedAt != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  'Каталог обновлён: ${_formatTime(state.syncedAt!)}',
+                  translate(
+                    'ai.catalogueUpdated',
+                    language,
+                    args: <String, String>{
+                      'time': _formatTime(state.syncedAt!),
+                    },
+                  ),
                   style: theme.textTheme.bodySmall,
                 ),
               ),
@@ -621,7 +668,7 @@ class _CatalogueCard extends StatelessWidget {
                 TextButton.icon(
                   onPressed: state.syncEnabled ? onSyncNow : null,
                   icon: const Icon(Icons.sync),
-                  label: const Text('Синхронизировать сейчас'),
+                  label: Text(translate('ai.syncNow', language)),
                 ),
                 TextButton.icon(
                   onPressed: () => launchUrl(
@@ -629,13 +676,12 @@ class _CatalogueCard extends StatelessWidget {
                     mode: LaunchMode.externalApplication,
                   ),
                   icon: const Icon(Icons.open_in_new),
-                  label: const Text('Веб-версия'),
+                  label: Text(translate('ai.webVersion', language)),
                 ),
               ],
             ),
             Text(
-              'API-ключи остаются на этом устройстве и на сервер не '
-              'отправляются.',
+              translate('ai.keysStayLocal', language),
               style: theme.textTheme.bodySmall,
             ),
           ],
@@ -651,7 +697,7 @@ class _CatalogueCard extends StatelessWidget {
   }
 }
 
-class _ProviderCard extends StatelessWidget {
+class _ProviderCard extends ConsumerWidget {
   const _ProviderCard({
     required this.provider,
     required this.onToggle,
@@ -679,8 +725,9 @@ class _ProviderCard extends StatelessWidget {
   final ModelStats? stats;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final language = ref.watch(settingsProvider).language;
 
     return Card(
       child: Padding(
@@ -719,7 +766,7 @@ class _ProviderCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
-                                'ваш',
+                                translate('ai.badgeMine', language),
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   color: Theme.of(context)
                                       .colorScheme
@@ -739,7 +786,7 @@ class _ProviderCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
-                                'не работает',
+                                translate('ai.badgeDead', language),
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   color: theme.colorScheme.onErrorContainer,
                                 ),
@@ -748,7 +795,13 @@ class _ProviderCard extends StatelessWidget {
                         ],
                       ),
                       Text(
-                        'Приоритет: ${provider.fallbackPriority}',
+                        translate(
+                          'ai.priority',
+                          language,
+                          args: <String, String>{
+                            'n': '${provider.fallbackPriority}',
+                          },
+                        ),
                         style: theme.textTheme.bodySmall,
                       ),
                     ],
@@ -768,15 +821,17 @@ class _ProviderCard extends StatelessWidget {
               label: 'API Key',
               value: provider.apiKey?.isNotEmpty == true
                   ? '••••••••'
-                  : '(не задан)',
-              trailing: provider.apiKey?.isNotEmpty == true ? null : 'ввести',
+                  : translate('ai.keyNotSet', language),
+              trailing: provider.apiKey?.isNotEmpty == true
+                  ? null
+                  : translate('ai.keyEnter', language),
               onTap: onEditKey,
             ),
             if (provider.isDead)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  'Проверка недоступна: провайдер помечен администратором.',
+                  translate('ai.deadHint', language),
                   style: theme.textTheme.bodySmall,
                 ),
               ),
@@ -789,18 +844,18 @@ class _ProviderCard extends StatelessWidget {
                   TextButton.icon(
                     onPressed: () => _launchUrl(provider.loginUrl!),
                     icon: const Icon(Icons.login),
-                    label: const Text('Страница логина'),
+                    label: Text(translate('ai.loginPage', language)),
                   ),
                 if (_hasUrl(provider.getApiKeyUrl))
                   TextButton.icon(
                     onPressed: () => _launchUrl(provider.getApiKeyUrl!),
                     icon: const Icon(Icons.vpn_key),
-                    label: const Text('Получить API-ключ'),
+                    label: Text(translate('ai.getApiKey', language)),
                   ),
                 TextButton.icon(
                   onPressed: onEditKey,
                   icon: const Icon(Icons.key),
-                  label: const Text('Ввести ключ'),
+                  label: Text(translate('ai.enterKey', language)),
                 ),
                 TextButton.icon(
                   onPressed:
@@ -813,20 +868,23 @@ class _ProviderCard extends StatelessWidget {
                         )
                       : const Icon(Icons.check_circle_outline),
                   label: Text(
-                    testing ? 'Проверяем…' : 'Проверить и список моделей',
+                    translate(
+                      testing ? 'common.checking' : 'ai.testAndModels',
+                      language,
+                    ),
                   ),
                 ),
                 if (onEdit != null)
                   TextButton.icon(
                     onPressed: onEdit,
                     icon: const Icon(Icons.edit),
-                    label: const Text('Изменить'),
+                    label: Text(translate('ai.edit', language)),
                   ),
                 if (onDelete != null)
                   TextButton.icon(
                     onPressed: onDelete,
                     icon: const Icon(Icons.delete_outline),
-                    label: const Text('Удалить'),
+                    label: Text(translate('common.delete', language)),
                   ),
               ],
             ),
@@ -946,9 +1004,16 @@ class _ModelsDialog extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final stats = ref.watch(aiProvidersProvider).stats[provider.id];
+    final language = ref.watch(settingsProvider).language;
 
     return AlertDialog(
-      title: Text('Модели: ${provider.name}'),
+      title: Text(
+        translate(
+          'ai.modelsTitle',
+          language,
+          args: <String, String>{'name': provider.name},
+        ),
+      ),
       content: SizedBox(
         width: 460,
         child: SingleChildScrollView(
@@ -956,23 +1021,29 @@ class _ModelsDialog extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              _InfoLine(label: 'Адрес', value: result.endpoint),
               _InfoLine(
-                label: 'Настроена',
+                label: translate('ai.fieldAddress', language),
+                value: result.endpoint,
+              ),
+              _InfoLine(
+                label: translate('ai.fieldConfigured', language),
                 value: provider.model,
                 trailing: result.offersModel(provider.model)
-                    ? 'есть в списке'
-                    : 'НЕТ в списке',
+                    ? translate('ai.modelInList', language)
+                    : translate('ai.modelNotInList', language),
               ),
               const Divider(height: 20),
               Text(
-                'Найдено моделей: ${result.models.length}',
+                translate(
+                  'ai.modelsFound',
+                  language,
+                  args: <String, String>{'n': '${result.models.length}'},
+                ),
                 style: theme.textTheme.titleSmall,
               ),
               const SizedBox(height: 6),
               Text(
-                'Рядом — сколько пользователей проверили модель успешно, '
-                'в скобках — сколько с ошибкой, и время последнего отчёта.',
+                translate('ai.modelsHint', language),
                 style: theme.textTheme.bodySmall,
               ),
               const SizedBox(height: 10),
@@ -994,7 +1065,8 @@ class _ModelsDialog extends ConsumerWidget {
                         ),
                       ),
                       Text(
-                        _statsLabel(modelStats) ?? 'нет данных',
+                        _statsLabel(modelStats) ??
+                            translate('ai.noData', language),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: modelStats == null
                               ? theme.colorScheme.onSurfaceVariant
@@ -1012,7 +1084,7 @@ class _ModelsDialog extends ConsumerWidget {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Закрыть'),
+          child: Text(translate('common.close', language)),
         ),
       ],
     );

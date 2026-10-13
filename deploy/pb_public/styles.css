@@ -1,6 +1,11 @@
 /* AI Providers — same origin as PocketBase (https://app.devhorizon.online). */
 
+/* Ten themes, switched by <html data-theme="...">. Every colour used by the
+ * pages comes from these variables, so one attribute restyles everything.
+ * The block below (no attribute) is the fallback: the neutral day theme. */
+
 :root {
+  color-scheme: light;
   --bg: #f6f7f9;
   --surface: #ffffff;
   --text: #17181c;
@@ -13,18 +18,138 @@
   --radius: 12px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #101116;
-    --surface: #191b21;
-    --text: #eceef2;
-    --muted: #9aa1ad;
-    --line: #2a2e37;
-    --brand: #7c74ff;
-    --brand-text: #0f1013;
-    --danger: #f87171;
-    --ok: #4ade80;
-  }
+/* ------------------------------------------------------- day (light) */
+
+:root[data-theme="day"] {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #17181c;
+  --muted: #6b7280;
+  --line: #e3e5ea;
+  --brand: #4f46e5;
+  --brand-text: #ffffff;
+  --danger: #b91c1c;
+  --ok: #15803d;
+}
+
+:root[data-theme="day-yellow"] {
+  color-scheme: light;
+  --bg: #fdf9e8;
+  --surface: #fffdf6;
+  --text: #1f1b0e;
+  --muted: #7c6e46;
+  --line: #efe6c4;
+  --brand: #a16207;
+  --brand-text: #ffffff;
+  --danger: #b91c1c;
+  --ok: #15803d;
+}
+
+:root[data-theme="day-red"] {
+  color-scheme: light;
+  --bg: #fdf4f4;
+  --surface: #fffafa;
+  --text: #1d1414;
+  --muted: #7b5b5b;
+  --line: #f0d9d9;
+  --brand: #b91c1c;
+  --brand-text: #ffffff;
+  --danger: #b91c1c;
+  --ok: #15803d;
+}
+
+:root[data-theme="day-green"] {
+  color-scheme: light;
+  --bg: #f3faf5;
+  --surface: #fbfefb;
+  --text: #121a15;
+  --muted: #5b7263;
+  --line: #d8ecdd;
+  --brand: #15803d;
+  --brand-text: #ffffff;
+  --danger: #b91c1c;
+  --ok: #15803d;
+}
+
+:root[data-theme="day-orange"] {
+  color-scheme: light;
+  --bg: #fdf5ee;
+  --surface: #fffbf7;
+  --text: #1e1409;
+  --muted: #7d5f47;
+  --line: #f3ddc9;
+  --brand: #c2410c;
+  --brand-text: #ffffff;
+  --danger: #b91c1c;
+  --ok: #15803d;
+}
+
+/* ------------------------------------------------------ night (dark) */
+
+:root[data-theme="night-red"] {
+  color-scheme: dark;
+  --bg: #1a1212;
+  --surface: #221717;
+  --text: #f3eded;
+  --muted: #b09a9a;
+  --line: #3a2727;
+  --brand: #f87171;
+  --brand-text: #1c0f0f;
+  --danger: #fca5a5;
+  --ok: #4ade80;
+}
+
+:root[data-theme="night-blue"] {
+  color-scheme: dark;
+  --bg: #0f151a;
+  --surface: #151d24;
+  --text: #e9eff4;
+  --muted: #94a7b4;
+  --line: #26333d;
+  --brand: #60a5fa;
+  --brand-text: #08131f;
+  --danger: #f87171;
+  --ok: #4ade80;
+}
+
+:root[data-theme="night-yellow"] {
+  color-scheme: dark;
+  --bg: #16150f;
+  --surface: #1e1c13;
+  --text: #f3f0e5;
+  --muted: #b3ab8a;
+  --line: #332f1d;
+  --brand: #facc15;
+  --brand-text: #1a1600;
+  --danger: #f87171;
+  --ok: #4ade80;
+}
+
+:root[data-theme="night-green"] {
+  color-scheme: dark;
+  --bg: #0f1713;
+  --surface: #15201b;
+  --text: #e9f2ec;
+  --muted: #93ad9f;
+  --line: #26352c;
+  --brand: #4ade80;
+  --brand-text: #06170d;
+  --danger: #f87171;
+  --ok: #86efac;
+}
+
+:root[data-theme="night-orange"] {
+  color-scheme: dark;
+  --bg: #17120e;
+  --surface: #201913;
+  --text: #f4ede6;
+  --muted: #b3a08f;
+  --line: #34281d;
+  --brand: #fb923c;
+  --brand-text: #1c1005;
+  --danger: #f87171;
+  --ok: #4ade80;
 }
 
 * {
@@ -91,10 +216,41 @@ body {
   font-size: 12px;
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* ------------------------------------------- language / theme switch */
+
+.ui-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ui-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ui-field select {
+  width: auto;
+  max-width: 190px;
+  padding: 6px 8px;
+  font-size: 13px;
 }
 
 .who {

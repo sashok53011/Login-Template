@@ -10,6 +10,7 @@ class ProviderTestResult {
     this.models = const <String>[],
     this.endpoint = '',
     this.error,
+    this.status,
   });
 
   final bool ok;
@@ -20,7 +21,11 @@ class ProviderTestResult {
   /// The URL that was called, shown in the UI on failure.
   final String endpoint;
 
+  /// `err.*` key of the failure, or null when [ok].
   final String? error;
+
+  /// HTTP status behind the failure, when there was an answer.
+  final int? status;
 
   /// Whether the model configured for the provider is among the offered ones.
   bool offersModel(String? model) {
@@ -81,7 +86,7 @@ class ProviderTestService {
         return ProviderTestResult(
           ok: false,
           endpoint: endpoint,
-          error: 'Провайдер ответил, но список моделей пуст.',
+          error: 'err.providerEmptyModels',
         );
       }
 
@@ -95,6 +100,7 @@ class ProviderTestService {
         ok: false,
         endpoint: endpoint,
         error: _readError(e),
+        status: e.response?.statusCode,
       );
     }
   }
@@ -142,13 +148,13 @@ class ProviderTestService {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.receiveTimeout:
       case DioExceptionType.sendTimeout:
-        return 'Провайдер не ответил вовремя.';
+        return 'err.providerTimeout';
       case DioExceptionType.connectionError:
-        return 'Нет связи с провайдером. Проверьте адрес и интернет.';
+        return 'err.providerNoConnection';
       case DioExceptionType.badCertificate:
-        return 'Проблема с сертификатом провайдера.';
+        return 'err.providerBadCert';
       case DioExceptionType.cancel:
-        return 'Запрос отменён.';
+        return 'err.providerCancelled';
       default:
         break;
     }
@@ -157,15 +163,15 @@ class ProviderTestService {
     switch (status) {
       case 401:
       case 403:
-        return 'Неверный API-ключ или он не подходит этому провайдеру.';
+        return 'err.badApiKey';
       case 404:
-        return 'Провайдер не отдаёт список моделей по этому адресу.';
+        return 'err.noModelsEndpoint';
       case 429:
-        return 'Провайдер ограничил запросы. Попробуйте позже.';
+        return 'err.rateLimited';
       case null:
-        return 'Не удалось связаться с провайдером.';
+        return 'err.providerUnreachable';
       default:
-        return 'Провайдер ответил ошибкой $status.';
+        return 'err.providerStatus';
     }
   }
 }

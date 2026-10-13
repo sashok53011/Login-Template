@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../models/action_result.dart';
 import '../providers/action_result_provider.dart';
+import '../providers/settings_provider.dart';
 
 /// Shown right after a register or login attempt.
 ///
@@ -20,20 +21,28 @@ class ActionResultScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final result = ref.watch(actionResultProvider);
+    final language = ref.watch(settingsProvider).language;
 
     // Deep link or process death: nothing to report.
     if (result == null) {
-      return _fallback(context);
+      return _fallback(context, language);
     }
 
     final color = result.success ? scheme.primary : scheme.error;
-    final primary = _primaryFor(context, result);
-    final secondary = _secondaryFor(context, result);
+    final primary = _primaryFor(context, result, language);
+    final secondary = _secondaryFor(context, result, language);
     final description = result.description?.trim() ?? '';
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(result.kind == ActionKind.register ? 'Регистрация' : 'Вход'),
+        title: Text(
+          translate(
+            result.kind == ActionKind.register
+                ? 'register.title'
+                : 'login.title',
+            language,
+          ),
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -58,14 +67,14 @@ class ActionResultScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  result.message,
+                  translate(result.message, language),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.headlineSmall,
                 ),
                 if (description.isNotEmpty && result.success) ...<Widget>[
                   const SizedBox(height: 8),
                   Text(
-                    description,
+                    translate(description, language),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium,
                   ),
@@ -90,7 +99,7 @@ class ActionResultScreen extends ConsumerWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            description,
+                            translate(description, language),
                             style: TextStyle(color: scheme.onErrorContainer),
                           ),
                         ),
@@ -134,10 +143,10 @@ class ActionResultScreen extends ConsumerWidget {
     );
   }
 
-  Widget _fallback(BuildContext context) {
+  Widget _fallback(BuildContext context, String language) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Результат')),
+      appBar: AppBar(title: Text(translate('result.fallbackTitle', language))),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -152,20 +161,20 @@ class ActionResultScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 24),
               Text(
-                'Нет данных о результате',
+                translate('result.noDataTitle', language),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.headlineSmall,
               ),
               const SizedBox(height: 8),
               Text(
-                'Попробуйте выполнить действие ещё раз.',
+                translate('result.noDataDesc', language),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium,
               ),
               const Spacer(),
               FilledButton(
                 onPressed: () => GoRouter.of(context).go('/login'),
-                child: const Text('Перейти ко входу'),
+                child: Text(translate('result.goToLoginFallback', language)),
               ),
             ],
           ),
@@ -175,41 +184,64 @@ class ActionResultScreen extends ConsumerWidget {
   }
 
   /// Main button: continue after success, retry after a failure.
-  _Action _primaryFor(BuildContext context, ActionResult result) {
+  _Action _primaryFor(
+    BuildContext context,
+    ActionResult result,
+    String language,
+  ) {
     final router = GoRouter.of(context);
 
     if (result.kind == ActionKind.register) {
       if (result.success) {
-        return _Action('Перейти к входу', () => router.go('/login'));
+        return _Action(
+          translate('result.goToLogin', language),
+          () => router.go('/login'),
+        );
       }
       return _Action(
-        'Попробовать снова',
+        translate('result.retry', language),
         () => router.canPop() ? router.pop() : router.go('/register'),
       );
     }
 
     if (result.success) {
-      return _Action('Перейти в профиль', () => router.go('/home'));
+      return _Action(
+        translate('result.goToProfile', language),
+        () => router.go('/home'),
+      );
     }
     return _Action(
-      'Попробовать снова',
+      translate('result.retry', language),
       () => router.canPop() ? router.pop() : router.go('/login'),
     );
   }
 
   /// Secondary action: registration always offers to go to the login form.
-  _Action? _secondaryFor(BuildContext context, ActionResult result) {
+  _Action? _secondaryFor(
+    BuildContext context,
+    ActionResult result,
+    String language,
+  ) {
     final router = GoRouter.of(context);
 
     if (result.kind == ActionKind.register) {
       return result.success
-          ? _Action('Создать ещё один аккаунт', () => router.go('/register'))
-          : _Action('Перейти к входу', () => router.go('/login'));
+          ? _Action(
+              translate('result.createAnother', language),
+              () => router.go('/register'),
+            )
+          : _Action(
+              translate('result.goToLogin', language),
+              () => router.go('/login'),
+            );
     }
 
     return result.success
         ? null
-        : _Action('Создать аккаунт', () => router.go('/register'));
+        : _Action(
+            translate('result.createAccount', language),
+            () => router.go('/register'),
+          );
   }
 }
 

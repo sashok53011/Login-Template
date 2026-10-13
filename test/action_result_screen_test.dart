@@ -30,6 +30,10 @@ GoRouter buildRouter() {
 }
 
 Future<GoRouter> pumpScreen(WidgetTester tester, ActionResult? result) async {
+  // The suite asserts the Russian default, so pin the platform locale.
+  tester.platformDispatcher.localeTestValue = const Locale('ru');
+  tester.platformDispatcher.localesTestValue = const <Locale>[Locale('ru')];
+
   final container = ProviderContainer();
   final router = buildRouter();
   addTearDown(container.dispose);

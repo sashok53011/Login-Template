@@ -1,11 +1,48 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="day">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>DevHorizon — app.devhorizon.online</title>
-    <link rel="stylesheet" href="/styles.css?v=1" />
+    <script>
+      /* Apply the saved language and theme before the first paint, so a night
+         theme never flashes a white page. Mirrors the logic in /ui.js. */
+      (function () {
+        var LANGS = ["ru", "en", "de"];
+        var THEMES = [
+          "day",
+          "day-yellow",
+          "day-red",
+          "day-green",
+          "day-orange",
+          "night-red",
+          "night-blue",
+          "night-yellow",
+          "night-green",
+          "night-orange",
+        ];
+        var root = document.documentElement;
+        var lang = null;
+        var theme = null;
+        try {
+          lang = localStorage.getItem("ui_lang");
+        } catch (e) {}
+        try {
+          theme = localStorage.getItem("ui_theme");
+        } catch (e) {}
+        if (LANGS.indexOf(lang) < 0) {
+          var nav = String(navigator.language || "").slice(0, 2).toLowerCase();
+          lang = LANGS.indexOf(nav) >= 0 ? nav : "ru";
+        }
+        if (THEMES.indexOf(theme) < 0) {
+          theme = "day";
+        }
+        root.setAttribute("lang", lang);
+        root.setAttribute("data-theme", theme);
+      })();
+    </script>
+    <link rel="stylesheet" href="/styles.css?v=2" />
   </head>
   <body>
     <div id="app">
@@ -17,22 +54,39 @@
             <p class="muted" id="host-label">app.devhorizon.online</p>
           </div>
         </div>
-        <div class="topbar-actions" id="topbar-actions" hidden>
-          <span class="who" id="who"></span>
-          <button class="btn btn-ghost" id="logout-btn" type="button">
-            Выйти
-          </button>
+        <div class="topbar-right">
+          <div class="ui-controls" id="ui-controls">
+            <label class="ui-field">
+              <span id="ui-lang-label">Язык</span>
+              <select id="ui-lang"></select>
+            </label>
+            <label class="ui-field">
+              <span id="ui-theme-label">Тема</span>
+              <select id="ui-theme"></select>
+            </label>
+          </div>
+          <div class="topbar-actions" id="topbar-actions" hidden>
+            <span class="who" id="who"></span>
+            <button
+              class="btn btn-ghost"
+              id="logout-btn"
+              type="button"
+              data-i18n="logout"
+            >
+              Выйти
+            </button>
+          </div>
         </div>
       </header>
 
       <main>
         <!-- ---------------------------------------------------- login view -->
         <section id="auth-view" class="card auth-card" hidden>
-          <h2 class="card-title">Вход</h2>
+          <h2 class="card-title" data-i18n="loginTitle">Вход</h2>
 
           <form id="login-form" class="form">
             <label>
-              Email
+              <span data-i18n="email">Email</span>
               <input
                 type="email"
                 name="identity"
@@ -41,7 +95,7 @@
               />
             </label>
             <label>
-              Пароль
+              <span data-i18n="password">Пароль</span>
               <input
                 type="password"
                 name="password"
@@ -50,23 +104,29 @@
               />
             </label>
             <label class="row">
-              <span>Вход администратора (superuser)</span>
+              <span data-i18n="adminLogin"
+                >Вход администратора (superuser)</span
+              >
               <input type="checkbox" id="admin-login" />
             </label>
-            <button class="btn btn-primary" type="submit">Войти</button>
+            <button class="btn btn-primary" type="submit" data-i18n="submit">
+              Войти
+            </button>
           </form>
 
           <p class="note" id="auth-note" hidden></p>
           <p class="note">
-            Ещё нет аккаунта?
-            <a href="/ai-providers/">Зарегистрироваться</a>
+            <span data-i18n="noAccount">Ещё нет аккаунта?</span>
+            <a href="/ai-providers/" data-i18n="register">Зарегистрироваться</a>
           </p>
         </section>
 
         <!-- ----------------------------------------------------- menu view -->
         <section id="menu-view" hidden>
           <div class="card">
-            <h2 class="card-title" id="greeting">Здравствуйте!</h2>
+            <h2 class="card-title" id="greeting" data-i18n="greeting">
+              Здравствуйте!
+            </h2>
             <p class="note" id="role-note"></p>
 
             <div class="menu">
@@ -78,6 +138,7 @@
                 id="admin-btn"
                 href="/_/"
                 hidden
+                data-i18n="adminBtn"
               >
                 Панель администратора
               </a>
@@ -86,6 +147,7 @@
                 id="api-btn"
                 type="button"
                 hidden
+                data-i18n="apiBtn"
               >
                 Проверить API
               </button>
@@ -105,6 +167,7 @@
       </footer>
     </div>
 
+    <script src="/ui.js?v=1"></script>
     <script>
       /* Landing page for app.devhorizon.online.
        *
@@ -113,10 +176,151 @@
        *
        * The administrator buttons are only rendered for a PocketBase
        * superuser, which is what /api/ai-config/meta reports as isSuperuser.
+       *
+       * Copy is localised through STR / t(); the language and theme switchers
+       * come from /ui.js.
        */
 
       var TOKEN_KEY = "ai_token";
       var USER_KEY = "ai_user";
+
+      var STR = {
+        ru: {
+          logout: "Выйти",
+          loginTitle: "Вход",
+          email: "Email",
+          password: "Пароль",
+          adminLogin: "Вход администратора (superuser)",
+          submit: "Войти",
+          noAccount: "Ещё нет аккаунта?",
+          register: "Зарегистрироваться",
+          greeting: "Здравствуйте!",
+          greetingName: "Здравствуйте, {name}!",
+          roleAdmin:
+            "Вы вошли как администратор: доступны панель администратора и проверка API.",
+          roleUser: "Вы вошли как пользователь: доступен список AI-провайдеров.",
+          adminBtn: "Панель администратора",
+          apiBtn: "Проверить API",
+          friend: "друг",
+          adminSuffix: " (админ)",
+          err401: "Неверный email или пароль, либо сессия истекла.",
+          errAuth: "Неверный email или пароль.",
+          errRequest: "Запрос не удался (HTTP {status}).",
+          sessionExpired: "Сессия истекла, войдите заново.",
+          errServer: "Не удалось получить данные с сервера: {message}",
+          checking: "Проверяем…",
+          checkHealthError: "/api/health → ошибка: {message}",
+          checkMetaTitle: "/api/ai-config/meta:",
+          checkCatalogCount: "  провайдеров в каталоге: {n}",
+          checkProposalCount: "  предложений от пользователей: {n}",
+          checkMyProposalCount: "  из них моих: {n}",
+          checkCatalogueFile: "  файл каталога: {path}",
+          checkExists: "  существует: {yesno}",
+          checkDataDir: "  каталог данных: {path}",
+          checkSuperuser: "  superuser: {yesno}",
+          checkMetaError: "/api/ai-config/meta → ошибка: {message}",
+          yes: "да",
+          no: "нет",
+        },
+        en: {
+          logout: "Sign out",
+          loginTitle: "Sign in",
+          email: "Email",
+          password: "Password",
+          adminLogin: "Administrator sign-in (superuser)",
+          submit: "Sign in",
+          noAccount: "No account yet?",
+          register: "Register",
+          greeting: "Hello!",
+          greetingName: "Hello, {name}!",
+          roleAdmin:
+            "You are signed in as an administrator: the admin panel and the API check are available.",
+          roleUser:
+            "You are signed in as a user: the AI provider list is available.",
+          adminBtn: "Admin panel",
+          apiBtn: "Check API",
+          friend: "friend",
+          adminSuffix: " (admin)",
+          err401: "Wrong email or password, or the session has expired.",
+          errAuth: "Wrong email or password.",
+          errRequest: "Request failed (HTTP {status}).",
+          sessionExpired: "The session has expired, please sign in again.",
+          errServer: "Could not load data from the server: {message}",
+          checking: "Checking…",
+          checkHealthError: "/api/health → error: {message}",
+          checkMetaTitle: "/api/ai-config/meta:",
+          checkCatalogCount: "  providers in the catalogue: {n}",
+          checkProposalCount: "  user suggestions: {n}",
+          checkMyProposalCount: "  of them mine: {n}",
+          checkCatalogueFile: "  catalogue file: {path}",
+          checkExists: "  exists: {yesno}",
+          checkDataDir: "  data directory: {path}",
+          checkSuperuser: "  superuser: {yesno}",
+          checkMetaError: "/api/ai-config/meta → error: {message}",
+          yes: "yes",
+          no: "no",
+        },
+        de: {
+          logout: "Abmelden",
+          loginTitle: "Anmeldung",
+          email: "E-Mail",
+          password: "Passwort",
+          adminLogin: "Administrator-Anmeldung (Superuser)",
+          submit: "Anmelden",
+          noAccount: "Noch kein Konto?",
+          register: "Registrieren",
+          greeting: "Hallo!",
+          greetingName: "Hallo, {name}!",
+          roleAdmin:
+            "Sie sind als Administrator angemeldet: Admin-Panel und API-Prüfung sind verfügbar.",
+          roleUser:
+            "Sie sind als Benutzer angemeldet: die Liste der KI-Anbieter ist verfügbar.",
+          adminBtn: "Admin-Panel",
+          apiBtn: "API prüfen",
+          friend: "Freund",
+          adminSuffix: " (Admin)",
+          err401:
+            "Falsche E-Mail oder falsches Passwort oder die Sitzung ist abgelaufen.",
+          errAuth: "Falsche E-Mail oder falsches Passwort.",
+          errRequest: "Anfrage fehlgeschlagen (HTTP {status}).",
+          sessionExpired: "Die Sitzung ist abgelaufen, bitte erneut anmelden.",
+          errServer:
+            "Daten konnten nicht vom Server geladen werden: {message}",
+          checking: "Prüfe…",
+          checkHealthError: "/api/health → Fehler: {message}",
+          checkMetaTitle: "/api/ai-config/meta:",
+          checkCatalogCount: "  Anbieter im Katalog: {n}",
+          checkProposalCount: "  Vorschläge von Benutzern: {n}",
+          checkMyProposalCount: "  davon meine: {n}",
+          checkCatalogueFile: "  Katalogdatei: {path}",
+          checkExists: "  vorhanden: {yesno}",
+          checkDataDir: "  Datenverzeichnis: {path}",
+          checkSuperuser: "  Superuser: {yesno}",
+          checkMetaError: "/api/ai-config/meta → Fehler: {message}",
+          yes: "ja",
+          no: "nein",
+        },
+      };
+
+      function t(key, vars) {
+        var pack = STR[UI.lang] || STR.ru;
+        var text = pack[key] !== undefined ? pack[key] : STR.ru[key];
+        if (text === undefined) {
+          text = key;
+        }
+        if (vars) {
+          text = text.replace(/\{(\w+)\}/g, function (match, name) {
+            return vars[name] !== undefined ? vars[name] : match;
+          });
+        }
+        return text;
+      }
+
+      function applyI18n() {
+        document.querySelectorAll("[data-i18n]").forEach(function (node) {
+          node.textContent = t(node.getAttribute("data-i18n"));
+        });
+      }
 
       var state = {
         token: localStorage.getItem(TOKEN_KEY) || null,
@@ -188,14 +392,14 @@
 
       function humanError(data, status) {
         if (status === 401) {
-          return "Неверный email или пароль, либо сессия истекла.";
+          return t("err401");
         }
         var raw =
           data && typeof data === "object" ? String(data.message || "") : "";
         if (raw.toLowerCase().indexOf("failed to authenticate") >= 0) {
-          return "Неверный email или пароль.";
+          return t("errAuth");
         }
-        return raw || "Запрос не удался (HTTP " + status + ").";
+        return raw || t("errRequest", { status: status });
       }
 
       function setAuthNote(message) {
@@ -221,15 +425,18 @@
         el.adminBtn.hidden = !state.isSuperuser;
         el.apiBtn.hidden = !state.isSuperuser;
 
-        if (!loggedIn) return;
+        if (!loggedIn) {
+          el.greeting.textContent = t("greeting");
+          return;
+        }
 
         var name =
-          (state.user && (state.user.name || state.user.email)) || "друг";
-        el.who.textContent = name + (state.isSuperuser ? " (админ)" : "");
-        el.greeting.textContent = "Здравствуйте, " + name + "!";
+          (state.user && (state.user.name || state.user.email)) || t("friend");
+        el.who.textContent = name + (state.isSuperuser ? t("adminSuffix") : "");
+        el.greeting.textContent = t("greetingName", { name: name });
         el.roleNote.textContent = state.isSuperuser
-          ? "Вы вошли как администратор: доступны панель администратора и проверка API."
-          : "Вы вошли как пользователь: доступен список AI-провайдеров.";
+          ? t("roleAdmin")
+          : t("roleUser");
       }
 
       async function doLogin(identity, password, isAdmin) {
@@ -279,17 +486,17 @@
         } catch (err) {
           if (err.status === 401) {
             doLogout();
-            setAuthNote("Сессия истекла, войдите заново.");
+            setAuthNote(t("sessionExpired"));
             return;
           }
-          setError("Не удалось получить данные с сервера: " + err.message);
+          setError(t("errServer", { message: err.message }));
         }
       }
 
       /// Health plus the catalogue diagnostics, for administrators only.
       async function checkApi() {
         el.apiOut.hidden = false;
-        el.apiOut.textContent = "Проверяем…";
+        el.apiOut.textContent = t("checking");
 
         var lines = [];
 
@@ -297,23 +504,31 @@
           var health = await api("/api/health", { auth: false });
           lines.push("/api/health → " + JSON.stringify(health));
         } catch (err) {
-          lines.push("/api/health → ошибка: " + err.message);
+          lines.push(t("checkHealthError", { message: err.message }));
         }
 
         try {
           var meta = await api("/api/ai-config/meta");
           lines.push("");
-          lines.push("/api/ai-config/meta:");
-          lines.push("  провайдеров в каталоге: " + meta.catalogueCount);
-          lines.push("  предложений от пользователей: " + meta.proposalCount);
-          lines.push("  из них моих: " + meta.myProposalCount);
-          lines.push("  файл каталога: " + meta.catalogue);
-          lines.push("  существует: " + (meta.catalogueExists ? "да" : "нет"));
-          lines.push("  каталог данных: " + meta.dir);
-          lines.push("  superuser: " + (meta.isSuperuser ? "да" : "нет"));
+          lines.push(t("checkMetaTitle"));
+          lines.push(t("checkCatalogCount", { n: meta.catalogueCount }));
+          lines.push(t("checkProposalCount", { n: meta.proposalCount }));
+          lines.push(t("checkMyProposalCount", { n: meta.myProposalCount }));
+          lines.push(t("checkCatalogueFile", { path: meta.catalogue }));
+          lines.push(
+            t("checkExists", {
+              yesno: meta.catalogueExists ? t("yes") : t("no"),
+            }),
+          );
+          lines.push(t("checkDataDir", { path: meta.dir }));
+          lines.push(
+            t("checkSuperuser", {
+              yesno: meta.isSuperuser ? t("yes") : t("no"),
+            }),
+          );
         } catch (err) {
           lines.push("");
-          lines.push("/api/ai-config/meta → ошибка: " + err.message);
+          lines.push(t("checkMetaError", { message: err.message }));
         }
 
         el.apiOut.textContent = lines.join("\n");
@@ -340,11 +555,17 @@
       el.logoutBtn.addEventListener("click", doLogout);
       el.apiBtn.addEventListener("click", checkApi);
 
+      UI.onChange(function () {
+        applyI18n();
+        render();
+      });
+
+      UI.mount();
+      applyI18n();
+      render();
+
       if (state.token) {
-        render();
         refreshRole();
-      } else {
-        render();
       }
     </script>
   </body>
