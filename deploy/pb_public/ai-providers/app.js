@@ -84,6 +84,7 @@ const STR = {
     testDisabledHint: "Проверка недоступна: провайдер помечен администратором.",
     keyNeeded:
       "Без ключа провайдер отвечает 401 — введите ключ, чтобы проверить модели.",
+    keyRejected: "Провайдер отверг ключ — проверьте его значение.",
     localLoad: "Загрузить в память",
     localLoadRunning: "Загружаем… прошло {m} мин",
     localLoadOk: "Модель загружена в память.",
@@ -230,6 +231,7 @@ const STR = {
     testDisabledHint: "The check is unavailable: the provider was marked by an administrator.",
     keyNeeded:
       "Without a key the provider answers 401 — enter a key to check its models.",
+    keyRejected: "The provider rejected the key — check its value.",
     localLoad: "Load into memory",
     localLoadRunning: "Loading… {m} min elapsed",
     localLoadOk: "The model is loaded into memory.",
@@ -376,6 +378,7 @@ const STR = {
     testDisabledHint: "Die Prüfung ist nicht verfügbar: Der Anbieter wurde von einem Administrator markiert.",
     keyNeeded:
       "Ohne Schlüssel antwortet der Anbieter mit 401 — geben Sie einen Schlüssel ein, um die Modelle zu prüfen.",
+    keyRejected: "Der Anbieter hat den Schlüssel abgelehnt — prüfen Sie seinen Wert.",
     localLoad: "In den Speicher laden",
     localLoadRunning: "Wird geladen… {m} Min vergangen",
     localLoadOk: "Das Modell wurde in den Speicher geladen.",
@@ -1454,25 +1457,33 @@ async function testProvider(provider) {
 
   const endpoint = modelsEndpoint(provider.url);
   const headers = { Accept: "application/json" };
-  if (provider.url.indexOf("anthropic.com") >= 0) {
-    headers["x-api-key"] = apiKey;
-    headers["anthropic-version"] = "2023-06-01";
-    headers["anthropic-dangerous-direct-browser-access"] = "true";
-  } else {
-    headers["Authorization"] = "Bearer " + apiKey;
+  // Without a key no Authorization header is sent at all — a local server
+  // answers without one, and an empty header would only confuse providers.
+  if (apiKey) {
+    if (provider.url.indexOf("anthropic.com") >= 0) {
+      headers["x-api-key"] = apiKey;
+      headers["anthropic-version"] = "2023-06-01";
+      headers["anthropic-dangerous-direct-browser-access"] = "true";
+    } else {
+      headers["Authorization"] = "Bearer " + apiKey;
+    }
   }
 
   let ok = false;
   let error = "";
+  let keyNeeded = false;
   let models = [];
 
   try {
     const res = await fetch(endpoint, { headers: headers });
     if (!res.ok) {
-      // 401/403 without a key is expected and worth explaining precisely.
-      error =
-        (res.status === 401 || res.status === 403) && !apiKey
-          ? t("keyNeeded")
+      // 401/403 is either a missing key or a refused one — worth telling apart.
+      const unauthorized = res.status === 401 || res.status === 403;
+      keyNeeded = unauthorized && !apiKey;
+      error = keyNeeded
+        ? t("keyNeeded")
+        : unauthorized
+          ? t("keyRejected")
           : t("providerStatus", { n: String(res.status) });
     } else {
       models = extractModels(await res.json());
@@ -1497,19 +1508,23 @@ async function testProvider(provider) {
     error = t("modelsNotOffered", { model: provider.model });
   }
 
-  try {
-    await api("/api/ai-stats", {
-      method: "POST",
-      body: {
-        providerId: provider.id,
-        model: provider.model,
-        ok: ok,
-        error: error,
-      },
-    });
-    await refreshStats();
-  } catch (err) {
-    /* statistics are secondary */
+  // A missing key is the user's own situation rather than the provider's
+  // fault, so it is kept out of the shared statistics.
+  if (!keyNeeded) {
+    try {
+      await api("/api/ai-stats", {
+        method: "POST",
+        body: {
+          providerId: provider.id,
+          model: provider.model,
+          ok: ok,
+          error: error,
+        },
+      });
+      await refreshStats();
+    } catch (err) {
+      /* statistics are secondary */
+    }
   }
 
   if (!ok) {

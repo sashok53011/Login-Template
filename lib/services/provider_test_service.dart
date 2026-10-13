@@ -71,11 +71,15 @@ class ProviderTestService {
     final endpoint = _endpoint(provider.url, isAnthropic: isAnthropic);
 
     final headers = <String, String>{};
-    if (isAnthropic) {
-      headers['x-api-key'] = apiKey;
-      headers['anthropic-version'] = '2023-06-01';
-    } else {
-      headers['Authorization'] = 'Bearer $apiKey';
+    // Without a key no header is sent at all: a local server answers without
+    // one, and an empty header would only confuse providers.
+    if (apiKey.isNotEmpty) {
+      if (isAnthropic) {
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+      } else {
+        headers['Authorization'] = 'Bearer $apiKey';
+      }
     }
 
     try {

@@ -211,6 +211,8 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
     'err.providerEmptyModels': 'Провайдер ответил, но список моделей пуст.',
     'err.providerDead': 'Провайдер помечен администратором как неработающий.',
     'err.enterApiKey': 'Сначала введите API-ключ.',
+    'err.keyNeeded': 'Без ключа провайдер отвечает 401 — введите ключ, чтобы '
+        'проверить модели.',
     'err.modelNotOffered': 'Модель {model} не предлагается',
   },
   'en': <String, String>{
@@ -423,6 +425,8 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
     'err.providerDead': 'The provider is marked as not working by an '
         'administrator.',
     'err.enterApiKey': 'Enter an API key first.',
+    'err.keyNeeded': 'Without a key the provider answers 401 — enter a key to '
+        'check its models.',
     'err.modelNotOffered': 'The model {model} is not offered',
   },
   'de': <String, String>{
@@ -643,6 +647,8 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
     'err.providerDead': 'Der Anbieter wurde von einem Administrator als nicht '
         'funktionsfähig markiert.',
     'err.enterApiKey': 'Geben Sie zuerst einen API-Schlüssel ein.',
+    'err.keyNeeded': 'Ohne Schlüssel antwortet der Anbieter mit 401 — geben Sie '
+        'einen Schlüssel ein, um die Modelle zu prüfen.',
     'err.modelNotOffered': 'Das Modell {model} wird nicht angeboten',
   },
 };

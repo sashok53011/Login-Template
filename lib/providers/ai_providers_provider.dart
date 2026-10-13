@@ -215,11 +215,10 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
       return null;
     }
 
+    // Fetching the model list needs no key: a local server answers without
+    // one, and the list is what you need anyway before a key is compared with
+    // a model.
     final apiKey = provider.apiKey ?? '';
-    if (apiKey.isEmpty) {
-      state = state.copyWith(error: _message('err.enterApiKey'));
-      return null;
-    }
 
     state = state.copyWith(
       testing: <String>{...state.testing, id},
@@ -236,9 +235,17 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
     // failure, so the administrator can see which models people cannot use.
     final offers = result.offersModel(provider.model);
     final ok = result.ok && offers;
-    final String? errorKey = result.ok
-        ? (offers ? null : 'err.modelNotOffered')
-        : result.error;
+    final bool unauthorized = result.status == 401 || result.status == 403;
+    final String? errorKey;
+    if (unauthorized && apiKey.isEmpty) {
+      // Nothing was sent, so nothing can be said about the provider — and the
+      // statistics are left alone as well.
+      errorKey = 'err.keyNeeded';
+    } else if (result.ok) {
+      errorKey = offers ? null : 'err.modelNotOffered';
+    } else {
+      errorKey = result.error;
+    }
     final Map<String, String>? errorArgs = errorKey == 'err.modelNotOffered'
         ? <String, String>{'model': provider.model}
         : (result.status != null
@@ -248,15 +255,21 @@ class AiProvidersNotifier extends StateNotifier<AiProvidersState> {
         errorKey == null ? null : _message(errorKey, args: errorArgs);
 
     try {
-      final stats = await _statsService.report(
-        providerId: id,
-        model: provider.model,
-        ok: ok,
-        error: error,
-      );
+      // A missing key is the user's own situation rather than the provider's
+      // fault, so it is kept out of the shared statistics.
+      final ProviderStats? stats = errorKey == 'err.keyNeeded'
+          ? null
+          : await _statsService.report(
+              providerId: id,
+              model: provider.model,
+              ok: ok,
+              error: error,
+            );
       state = state.copyWith(
         testing: state.testing.where((String t) => t != id).toSet(),
-        stats: <String, ProviderStats>{...state.stats, id: stats},
+        stats: stats == null
+            ? state.stats
+            : <String, ProviderStats>{...state.stats, id: stats},
         models: <String, List<String>>{...state.models, id: result.models},
         error: ok ? null : error,
       );

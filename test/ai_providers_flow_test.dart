@@ -744,4 +744,45 @@ void main() {
       contains('Неверный API-ключ'),
     );
   });
+
+  testWidgets('the model list is fetched even without a key',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[_entry('openai', 'OpenAI', 1)]),
+    );
+
+    await openProviders(tester, backend, FakeStorage());
+
+    final button = find.widgetWithText(TextButton, 'Проверить и список моделей');
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    // A local server answers without a key, so the list opens and the result
+    // is published like any other test.
+    expect(find.text('Модели: OpenAI'), findsOneWidget);
+    expect(backend.statsPosts, hasLength(1));
+    expect(backend.statsPosts.first['ok'], true);
+  });
+
+  testWidgets('a provider that demands a key is explained, not published',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[_entry('openai', 'OpenAI', 1)]),
+    )..providerModelsStatus = 401;
+
+    await openProviders(tester, backend, FakeStorage());
+
+    final button = find.widgetWithText(TextButton, 'Проверить и список моделей');
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    // Nothing was sent, so nothing can be said about the provider and no
+    // failure is published for it.
+    expect(backend.statsPosts, isEmpty);
+    expect(find.textContaining('введите ключ'), findsOneWidget);
+  });
 }
