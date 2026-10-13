@@ -82,7 +82,18 @@ const STR = {
     keyClear: "Очистить",
     testAndModels: "Проверить и список моделей",
     testDisabledHint: "Проверка недоступна: провайдер помечен администратором.",
-    noKey: "Сначала введите API-ключ.",
+    keyNeeded:
+      "Без ключа провайдер отвечает 401 — введите ключ, чтобы проверить модели.",
+    localLoad: "Загрузить в память",
+    localLoadRunning: "Загружаем… прошло {m} мин",
+    localLoadOk: "Модель загружена в память.",
+    localLoadFailed: "Не удалось загрузить модель: {err}",
+    localLoadTimeout:
+      "Не уложились за {m} мин. Увеличьте таймаут загрузки в настройках.",
+    localLoadUnsupported:
+      "Автоматическая загрузка в память есть только у Ollama. Остальные локальные модели загружаются в своём приложении.",
+    localTimeoutLabel: "Таймаут загрузки, мин",
+    localTimeoutHint: "От 1 до 10 минут — загрузка большой модели может идти долго.",
     providerStatus: "Провайдер ответил ошибкой {n}.",
     modelsEmpty: "Провайдер ответил, но список моделей пуст.",
     corsOrNetwork:
@@ -217,7 +228,18 @@ const STR = {
     keyClear: "Clear",
     testAndModels: "Check and list models",
     testDisabledHint: "The check is unavailable: the provider was marked by an administrator.",
-    noKey: "Enter an API key first.",
+    keyNeeded:
+      "Without a key the provider answers 401 — enter a key to check its models.",
+    localLoad: "Load into memory",
+    localLoadRunning: "Loading… {m} min elapsed",
+    localLoadOk: "The model is loaded into memory.",
+    localLoadFailed: "Could not load the model: {err}",
+    localLoadTimeout:
+      "It did not finish within {m} min. Raise the load timeout in the settings.",
+    localLoadUnsupported:
+      "Automatic loading into memory is Ollama's feature. Other local models are loaded in their own application.",
+    localTimeoutLabel: "Load timeout, min",
+    localTimeoutHint: "From 1 to 10 minutes — a large model can take a while.",
     providerStatus: "The provider answered with error {n}.",
     modelsEmpty: "The provider answered, but the model list is empty.",
     corsOrNetwork:
@@ -352,7 +374,18 @@ const STR = {
     keyClear: "Leeren",
     testAndModels: "Prüfen und Modelle auflisten",
     testDisabledHint: "Die Prüfung ist nicht verfügbar: Der Anbieter wurde von einem Administrator markiert.",
-    noKey: "Geben Sie zuerst einen API-Schlüssel ein.",
+    keyNeeded:
+      "Ohne Schlüssel antwortet der Anbieter mit 401 — geben Sie einen Schlüssel ein, um die Modelle zu prüfen.",
+    localLoad: "In den Speicher laden",
+    localLoadRunning: "Wird geladen… {m} Min vergangen",
+    localLoadOk: "Das Modell wurde in den Speicher geladen.",
+    localLoadFailed: "Das Modell konnte nicht geladen werden: {err}",
+    localLoadTimeout:
+      "Nicht innerhalb von {m} Min geschafft. Erhöhen Sie die Ladezeit in den Einstellungen.",
+    localLoadUnsupported:
+      "Automatisches Laden gibt es nur bei Ollama. Andere lokale Modelle werden in deren eigener Anwendung geladen.",
+    localTimeoutLabel: "Ladezeit, Min",
+    localTimeoutHint: "Von 1 bis 10 Minuten — ein großes Modell kann lange dauern.",
     providerStatus: "Der Anbieter antwortete mit Fehler {n}.",
     modelsEmpty: "Der Anbieter hat geantwortet, die Modellliste ist aber leer.",
     corsOrNetwork:
@@ -1327,6 +1360,33 @@ function setApiKey(providerId, value) {
   }
 }
 
+/// How long a local model may be pulled into memory, in minutes (1..10).
+function localTimeoutFor() {
+  try {
+    const raw = parseInt(
+      localStorage.getItem("ai_local_timeout_" + ((state.user && state.user.id) || "anon")),
+      10,
+    );
+    if (raw >= 1 && raw <= 10) return raw;
+  } catch (err) {
+    /* ignore */
+  }
+  return 3;
+}
+
+function setLocalTimeout(minutes) {
+  const value = Math.min(10, Math.max(1, Math.round(minutes) || 3));
+  try {
+    localStorage.setItem(
+      "ai_local_timeout_" + ((state.user && state.user.id) || "anon"),
+      String(value),
+    );
+  } catch (err) {
+    /* storage may be unavailable */
+  }
+  return value;
+}
+
 let keyTarget = null;
 
 function openKeyDialog(provider) {
@@ -1384,11 +1444,9 @@ function extractModels(data) {
 /// Asks the provider for its model list, straight from this browser, and
 /// publishes the outcome so the shared counters move.
 async function testProvider(provider) {
+  // Fetching the model list needs no key: local servers answer without one,
+  // and the list is what you need anyway before comparing a key with a model.
   const apiKey = apiKeyFor(provider.id);
-  if (!apiKey) {
-    alert(t("noKey"));
-    return;
-  }
   if (provider.status === "dead" || provider.status === "disabled_for_all") {
     alert(t("testDisabledHint"));
     return;
@@ -1411,7 +1469,11 @@ async function testProvider(provider) {
   try {
     const res = await fetch(endpoint, { headers: headers });
     if (!res.ok) {
-      error = t("providerStatus", { n: String(res.status) });
+      // 401/403 without a key is expected and worth explaining precisely.
+      error =
+        (res.status === 401 || res.status === 403) && !apiKey
+          ? t("keyNeeded")
+          : t("providerStatus", { n: String(res.status) });
     } else {
       models = extractModels(await res.json());
       if (!models.length) {
@@ -1470,6 +1532,20 @@ function showModels(provider, endpoint, models) {
     { model: provider.model },
   );
 
+  // Pulling a model into memory is something a local server does; the timeout
+  // exists because a big model can take many minutes.
+  const local = isLocalUrl(provider.url);
+  document.getElementById("models-timeout-row").hidden = !local;
+  document.getElementById("models-timeout-hint").hidden = !local;
+
+  if (local) {
+    document.getElementById("models-timeout").value = String(localTimeoutFor());
+  }
+
+  const progress = document.getElementById("models-progress");
+  progress.hidden = true;
+  progress.textContent = "";
+
   const providerStats = state.stats[provider.id];
   const list = document.getElementById("models-list");
   list.textContent = "";
@@ -1485,17 +1561,97 @@ function showModels(provider, endpoint, models) {
     }
     row.appendChild(title);
 
+    const actions = document.createElement("div");
+    actions.className = "trash-row-actions";
+
     const stats =
       providerStats && providerStats.models ? providerStats.models[name] : null;
     const value = document.createElement("span");
     value.className = "trash-meta";
     value.textContent = stats ? formatStats(stats) : t("modelsNoStats");
-    row.appendChild(value);
+    actions.appendChild(value);
 
+    if (local) {
+      actions.appendChild(
+        miniButton(t("localLoad"), function () {
+          loadModel(provider, name);
+        }),
+      );
+    }
+
+    row.appendChild(actions);
     list.appendChild(row);
   });
 
   document.getElementById("models-dialog").showModal();
+}
+
+/// Pulls a model into the memory of a local server. Only Ollama exposes this
+/// over HTTP; the rest load their models from their own application.
+async function loadModel(provider, model) {
+  if (!isLocalUrl(provider.url)) {
+    alert(t("localLoadUnsupported"));
+    return;
+  }
+
+  const progress = document.getElementById("models-progress");
+  const minutes = localTimeoutFor();
+
+  const controller = new AbortController();
+  let elapsed = 0;
+
+  progress.hidden = false;
+  progress.textContent = t("localLoadRunning", { m: "0" });
+
+  const ticker = setInterval(function () {
+    elapsed += 1;
+    progress.textContent = t("localLoadRunning", { m: String(elapsed) });
+  }, 60000);
+  const timer = setTimeout(function () {
+    controller.abort();
+  }, minutes * 60000);
+
+  const base = provider.url.replace(/\/+$/, "").replace(/\/v1$/, "");
+  const headers = { "Content-Type": "application/json" };
+  const key = apiKeyFor(provider.id);
+  if (key) {
+    headers["Authorization"] = "Bearer " + key;
+  }
+
+  let message = null;
+  try {
+    const res = await fetch(base + "/api/pull", {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({ name: model, stream: false }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const data = await res.json();
+        detail = (data && (data.error || data.detail)) || "";
+      } catch (err) {
+        /* body may not be json */
+      }
+      message = t("localLoadFailed", {
+        err: detail || t("providerStatus", { n: String(res.status) }),
+      });
+    } else {
+      message = t("localLoadOk");
+    }
+  } catch (err) {
+    message = controller.signal.aborted
+      ? t("localLoadTimeout", { m: String(minutes) })
+      : t("localLoadFailed", { err: t("corsLocal", { origin: location.origin }) });
+  } finally {
+    clearTimeout(timer);
+    clearInterval(ticker);
+    progress.hidden = false;
+  }
+
+  progress.textContent = message;
 }
 
 /* --------------------------------------------------------------- wiring */
@@ -1619,6 +1775,11 @@ document.getElementById("key-paste").addEventListener("click", async function ()
 document.getElementById("models-close").addEventListener("click", function () {
   document.getElementById("models-dialog").close();
 });
+document
+  .getElementById("models-timeout")
+  .addEventListener("change", function (event) {
+    event.target.value = String(setLocalTimeout(parseInt(event.target.value, 10)));
+  });
 
 /* Switching language re-renders everything, including the provider cards,
  * the toolbar notes and the open dialogs' labels. */

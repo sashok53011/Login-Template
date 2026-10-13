@@ -720,3 +720,14 @@ dialog::backdrop {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+
+.trash-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.timeout-input {
+  width: 110px;
+}
