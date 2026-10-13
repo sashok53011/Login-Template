@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -273,12 +274,16 @@ class _AiProvidersListScreenState extends ConsumerState<AiProvidersListScreen> {
 
   /// Runs the provider test and shows either the model list or the reason it
   /// failed.
+  ///
+  /// A list that came back without the configured model still opens the
+  /// dialog: that is exactly the moment when someone wants to look at what the
+  /// provider does offer, and the dialog says so itself.
   Future<void> _runTest(AiProvider provider) async {
     final result =
         await ref.read(aiProvidersProvider.notifier).testProvider(provider.id);
     if (!mounted || result == null) return;
 
-    if (!result.ok) {
+    if (!result.ok && result.models.isEmpty) {
       final key = result.error ?? 'ai.testFailed';
       final args = result.status != null
           ? <String, String>{'status': '${result.status}'}
@@ -1036,17 +1041,109 @@ class _InfoLine extends StatelessWidget {
 
 /// Shows the models the provider reported, with the usage counters collected
 /// from every user's tests.
-class _ModelsDialog extends ConsumerWidget {
+///
+/// A local provider gets one more thing: a button per model that pulls it into
+/// the server's memory — with progress, a cancel button and the time limit the
+/// user chose in the settings, because a large model takes minutes.
+class _ModelsDialog extends ConsumerStatefulWidget {
   const _ModelsDialog({required this.provider, required this.result});
 
   final AiProvider provider;
   final ProviderTestResult result;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ModelsDialog> createState() => _ModelsDialogState();
+}
+
+class _ModelsDialogState extends ConsumerState<_ModelsDialog> {
+  final CancelToken _cancelToken = CancelToken();
+
+  /// The model being pulled right now, or null while nothing is running.
+  String? _loading;
+  double? _fraction;
+  String _serverStatus = '';
+
+  /// Shown once a pull is over: whether it worked, and what to say about it.
+  bool? _finishedOk;
+  String? _finishedMessage;
+
+  bool get _canLoad =>
+      ref.watch(localModelLoaderProvider).supports(widget.provider) &&
+      _loading == null;
+
+  String get _language => ref.watch(settingsProvider).language;
+
+  Future<void> _load(String model) async {
+    if (!_canLoad) return;
+
+    final minutes = ref.read(settingsProvider).localLoadTimeoutMinutes;
+    setState(() {
+      _loading = model;
+      _fraction = null;
+      _serverStatus = '';
+      _finishedOk = null;
+      _finishedMessage = null;
+    });
+
+    final result = await ref.read(localModelLoaderProvider).pull(
+      provider: widget.provider,
+      model: model,
+      timeout: Duration(minutes: minutes),
+      cancelToken: _cancelToken,
+      onProgress: (double? fraction, String status) {
+        if (!mounted) return;
+        setState(() {
+          _fraction = fraction;
+          _serverStatus = status;
+        });
+      },
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _loading = null;
+      _finishedOk = result.ok;
+      _finishedMessage = result.ok
+          ? translate('ai.loadDone', _language)
+          : _explain(result.error, minutes);
+    });
+  }
+
+  void _cancel() {
+    if (!_cancelToken.isCancelled) _cancelToken.cancel();
+  }
+
+  /// Turns a result key into a sentence. The provider's own wording passes
+  /// through, because [translate] hands unknown text back untouched.
+  String _explain(String? error, int minutes) {
+    if (error == null || error.isEmpty) {
+      return translate('ai.loadFailed', _language);
+    }
+    if (error == 'ai.loadTimeout') {
+      return translate(
+        'ai.loadTimeout',
+        _language,
+        args: <String, String>{'minutes': '$minutes'},
+      );
+    }
+    return translate(error, _language);
+  }
+
+  @override
+  void dispose() {
+    // Closing the dialog stops a running pull: a download nobody can watch or
+    // stop would be worse than starting it again later.
+    if (_loading != null) _cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final stats = ref.watch(aiProvidersProvider).stats[provider.id];
-    final language = ref.watch(settingsProvider).language;
+    final stats = ref.watch(aiProvidersProvider).stats[widget.provider.id];
+    final language = _language;
+    final provider = widget.provider;
+    final result = widget.result;
 
     return AlertDialog(
       title: Text(
@@ -1088,6 +1185,13 @@ class _ModelsDialog extends ConsumerWidget {
                 translate('ai.modelsHint', language),
                 style: theme.textTheme.bodySmall,
               ),
+              if (_canLoad) ...<Widget>[
+                const SizedBox(height: 4),
+                Text(
+                  translate('ai.loadHint', language),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
               const SizedBox(height: 10),
               ...result.models.map((String model) {
                 final modelStats = stats?.forModel(model);
@@ -1101,8 +1205,9 @@ class _ModelsDialog extends ConsumerWidget {
                         child: Text(
                           model,
                           style: TextStyle(
-                            fontWeight:
-                                isConfigured ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: isConfigured
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
                       ),
@@ -1115,10 +1220,23 @@ class _ModelsDialog extends ConsumerWidget {
                               : theme.colorScheme.primary,
                         ),
                       ),
+                      if (_canLoad) ...<Widget>[
+                        const SizedBox(width: 8),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 28),
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            textStyle: theme.textTheme.labelSmall,
+                          ),
+                          onPressed: () => _load(model),
+                          child: Text(translate('ai.loadIntoMemory', language)),
+                        ),
+                      ],
                     ],
                   ),
                 );
               }),
+              ..._progress(theme, language),
             ],
           ),
         ),
@@ -1130,6 +1248,55 @@ class _ModelsDialog extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  /// The bar while a pull runs, and the outcome once it is over.
+  List<Widget> _progress(ThemeData theme, String language) {
+    if (_loading != null) {
+      return <Widget>[
+        const SizedBox(height: 12),
+        LinearProgressIndicator(value: _fraction),
+        const SizedBox(height: 2),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                _fraction == null
+                    ? (_serverStatus.isEmpty
+                        ? translate('ai.loadWorking', language)
+                        : _serverStatus)
+                    : translate(
+                        'ai.loadPercent',
+                        language,
+                        args: <String, String>{
+                          'percent': '${(_fraction! * 100).round()}',
+                        },
+                      ),
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            TextButton(
+              onPressed: _cancel,
+              child: Text(translate('common.cancel', language)),
+            ),
+          ],
+        ),
+      ];
+    }
+
+    if (_finishedMessage == null) return <Widget>[];
+
+    return <Widget>[
+      const SizedBox(height: 12),
+      Text(
+        _finishedMessage!,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: _finishedOk == true
+              ? theme.colorScheme.primary
+              : theme.colorScheme.error,
+        ),
+      ),
+    ];
   }
 }
 

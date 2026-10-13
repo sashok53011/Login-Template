@@ -118,7 +118,11 @@ const STR = {
     toggleTitle: "Включён",
     edit: "Редактировать",
     remove: "Удалить",
-    confirmDelete: "Удалить провайдера «{name}»?",
+    confirmDelete:
+      "Удалить «{name}» из каталога? Он уйдёт в корзину, откуда его можно " +
+      "вернуть. У тех, кто его включил, он останется до выключения.",
+    markDead: "Пометить неработающим",
+    markAlive: "Снять пометку",
     badgeProposal: "предложение",
     badgeCatalogue: "каталог",
     trashDeleted: "Удалён {when}",
@@ -265,7 +269,11 @@ const STR = {
     toggleTitle: "Enabled",
     edit: "Edit",
     remove: "Delete",
-    confirmDelete: "Delete the provider “{name}”?",
+    confirmDelete:
+      "Remove “{name}” from the catalogue? It goes to the bin and can be " +
+      "restored. Whoever switched it on keeps it until they switch it off.",
+    markDead: "Mark as not working",
+    markAlive: "Clear the mark",
     badgeProposal: "proposal",
     badgeCatalogue: "catalogue",
     trashDeleted: "Deleted {when}",
@@ -412,7 +420,12 @@ const STR = {
     toggleTitle: "Aktiviert",
     edit: "Bearbeiten",
     remove: "Löschen",
-    confirmDelete: "Anbieter „{name}“ löschen?",
+    confirmDelete:
+      "„{name}“ aus dem Katalog entfernen? Er wandert in den Papierkorb und " +
+      "kann zurückgeholt werden. Wer ihn eingeschaltet hat, behält ihn, bis er " +
+      "ihn ausschaltet.",
+    markDead: "Als defekt markieren",
+    markAlive: "Markierung entfernen",
     badgeProposal: "Vorschlag",
     badgeCatalogue: "Katalog",
     trashDeleted: "Gelöscht {when}",
@@ -1017,6 +1030,23 @@ function providerCard(provider) {
         openEditor(provider.id);
       }),
     );
+
+    // One click to mark it as not working — the same thing the editor does,
+    // only without opening a form. An entry switched off for everybody is out
+    // of sight anyway, so there the mark would say nothing new.
+    if (provider.status !== "disabled_for_all") {
+      actions.appendChild(
+        miniButton(
+          provider.status === "dead" ? t("markAlive") : t("markDead"),
+          function () {
+            provider.status = provider.status === "dead" ? "active" : "dead";
+            persist();
+            renderProviders();
+          },
+        ),
+      );
+    }
+
     actions.appendChild(
       miniButton(t("remove"), function () {
         if (!confirm(t("confirmDelete", { name: provider.name }))) {

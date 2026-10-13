@@ -73,6 +73,10 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
     'settings.title': 'Настройки',
     'settings.languageTitle': 'Язык',
     'settings.themeTitle': 'Тема',
+    'settings.loadTimeoutTitle': 'Таймаут загрузки локальных моделей',
+    'settings.loadTimeoutHint':
+        'От 1 до 10 минут — большая модель грузится долго.',
+    'settings.loadTimeoutUnit': 'мин',
     'language.ru': 'Русский',
     'language.en': 'English',
     'language.de': 'Deutsch',
@@ -170,6 +174,19 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
     'ai.modelsHint': 'Рядом — сколько пользователей проверили модель успешно, '
         'в скобках — сколько с ошибкой, и время последнего отчёта.',
     'ai.noData': 'нет данных',
+    'ai.loadIntoMemory': 'Загрузить в память',
+    'ai.loadWorking': 'Загружаем…',
+    'ai.loadPercent': 'Загружено {percent}%',
+    'ai.loadDone': 'Модель загружена в память.',
+    'ai.loadCancelled': 'Загрузка отменена.',
+    'ai.loadFailed': 'Не удалось загрузить модель.',
+    'ai.loadTimeout':
+        'Не уложились за {minutes} мин. Увеличьте таймаут в настройках.',
+    'ai.loadUnsupported':
+        'Автоматическая загрузка есть только у Ollama. Остальные локальные '
+        'модели загружаются в своём приложении.',
+    'ai.loadHint':
+        'Большая модель может загружаться долго — таймаут меняется в настройках.',
 
     // ------------------------------------------------------- service errors
     'err.noConnection': 'Нет связи с сервером. Проверьте интернет-соединение.',
@@ -278,6 +295,10 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
     'settings.title': 'Settings',
     'settings.languageTitle': 'Language',
     'settings.themeTitle': 'Theme',
+    'settings.loadTimeoutTitle': 'Local model load timeout',
+    'settings.loadTimeoutHint':
+        'From 1 to 10 minutes — a large model takes a while.',
+    'settings.loadTimeoutUnit': 'min',
     'language.ru': 'Russian',
     'language.en': 'English',
     'language.de': 'German',
@@ -379,6 +400,19 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
         'successfully, in brackets how many failed, and the time of the last '
         'report.',
     'ai.noData': 'no data',
+    'ai.loadIntoMemory': 'Load into memory',
+    'ai.loadWorking': 'Loading…',
+    'ai.loadPercent': 'Loaded {percent}%',
+    'ai.loadDone': 'The model is loaded into memory.',
+    'ai.loadCancelled': 'Loading cancelled.',
+    'ai.loadFailed': 'The model could not be loaded.',
+    'ai.loadTimeout':
+        'It did not finish within {minutes} min. Raise the timeout in the settings.',
+    'ai.loadUnsupported':
+        'Automatic loading is Ollama’s feature. Other local models are '
+        'loaded in their own application.',
+    'ai.loadHint':
+        'A large model can take a while — the timeout is set in the settings.',
 
     // ------------------------------------------------------- service errors
     'err.noConnection': 'No connection to the server. Check your internet '
@@ -493,6 +527,10 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
     'settings.title': 'Einstellungen',
     'settings.languageTitle': 'Sprache',
     'settings.themeTitle': 'Design',
+    'settings.loadTimeoutTitle': 'Ladezeit lokaler Modelle',
+    'settings.loadTimeoutHint':
+        'Von 1 bis 10 Minuten — ein großes Modell dauert lange.',
+    'settings.loadTimeoutUnit': 'Min',
     'language.ru': 'Russisch',
     'language.en': 'Englisch',
     'language.de': 'Deutsch',
@@ -597,6 +635,19 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
         'haben, in Klammern wie viele mit Fehler, und die Zeit des letzten '
         'Berichts.',
     'ai.noData': 'keine Daten',
+    'ai.loadIntoMemory': 'In den Speicher laden',
+    'ai.loadWorking': 'Wird geladen…',
+    'ai.loadPercent': '{percent}% geladen',
+    'ai.loadDone': 'Das Modell wurde in den Speicher geladen.',
+    'ai.loadCancelled': 'Laden abgebrochen.',
+    'ai.loadFailed': 'Das Modell konnte nicht geladen werden.',
+    'ai.loadTimeout':
+        'Nicht innerhalb von {minutes} Min geschafft. Erhöhen Sie die Zeit in den Einstellungen.',
+    'ai.loadUnsupported':
+        'Automatisches Laden gibt es nur bei Ollama. Andere lokale Modelle '
+        'werden in deren eigener Anwendung geladen.',
+    'ai.loadHint':
+        'Ein großes Modell kann lange dauern — die Zeit steht in den Einstellungen.',
 
     // ------------------------------------------------------- service errors
     'err.noConnection': 'Keine Verbindung zum Server. Prüfen Sie die '

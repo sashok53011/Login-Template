@@ -60,6 +60,26 @@ class AiProvider extends Equatable {
 
   bool get isProposal => origin == 'user';
 
+  /// Whether the address points at this device or the local network.
+  ///
+  /// A local server needs no API key, is reachable without CORS trouble, and
+  /// is the only kind of provider that can pull a model into memory itself.
+  bool get isLocal {
+    final host = Uri.tryParse(url.trim())?.host.toLowerCase() ?? '';
+    if (host.isEmpty) return false;
+    if (host == 'localhost' || host == '::1' || host == '[::1]') return true;
+    if (host.startsWith('127.')) return true;
+
+    final parts = host.split('.');
+    if (parts.length != 4) return false;
+    final first = int.tryParse(parts[0]);
+    final second = int.tryParse(parts[1]);
+    if (first == null || second == null) return false;
+    if (first == 10) return true;
+    if (first == 192 && second == 168) return true;
+    return first == 172 && second >= 16 && second <= 31;
+  }
+
   factory AiProvider.fromJson(Map<String, dynamic> json) {
     return AiProvider(
       id: json['id']?.toString() ?? '',

@@ -54,15 +54,32 @@ enum AppThemeVariant {
 
 /// Persisted UI preferences.
 class SettingsState {
-  const SettingsState({required this.language, required this.theme});
+  const SettingsState({
+    required this.language,
+    required this.theme,
+    this.localLoadTimeoutMinutes = defaultLoadTimeoutMinutes,
+  });
+
+  /// How long a local model may be pulled into memory, in minutes. A large
+  /// model takes a while, so the limit is a setting rather than a constant.
+  static const int defaultLoadTimeoutMinutes = 3;
+  static const int minLoadTimeoutMinutes = 1;
+  static const int maxLoadTimeoutMinutes = 10;
 
   final String language;
   final AppThemeVariant theme;
+  final int localLoadTimeoutMinutes;
 
-  SettingsState copyWith({String? language, AppThemeVariant? theme}) {
+  SettingsState copyWith({
+    String? language,
+    AppThemeVariant? theme,
+    int? localLoadTimeoutMinutes,
+  }) {
     return SettingsState(
       language: language ?? this.language,
       theme: theme ?? this.theme,
+      localLoadTimeoutMinutes:
+          localLoadTimeoutMinutes ?? this.localLoadTimeoutMinutes,
     );
   }
 
@@ -70,10 +87,11 @@ class SettingsState {
   bool operator ==(Object other) =>
       other is SettingsState &&
       other.language == language &&
-      other.theme == theme;
+      other.theme == theme &&
+      other.localLoadTimeoutMinutes == localLoadTimeoutMinutes;
 
   @override
-  int get hashCode => Object.hash(language, theme);
+  int get hashCode => Object.hash(language, theme, localLoadTimeoutMinutes);
 }
 
 /// Holds the language and theme, and stores them through
@@ -84,8 +102,13 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   /// Secure-storage keys.
   static const String languageKey = 'ui_language';
   static const String themeKey = 'ui_theme';
+  static const String loadTimeoutKey = 'ui_local_load_timeout';
 
   final SecureStorageService _storage;
+
+  /// Set as soon as the user (or a test) has chosen something, so a restore
+  /// that is still on its way cannot overwrite a fresher choice.
+  bool _changed = false;
 
   /// The starting point: the device language when it is `en`/`de`/`ru`,
   /// otherwise Russian; `day` unless the platform runs in dark mode.
@@ -125,9 +148,13 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     try {
       final language = await _storage.readValue(languageKey);
       final theme = await _storage.readValue(themeKey);
+      final timeout = await _storage.readValue(loadTimeoutKey);
+      if (_changed) return;
       state = SettingsState(
         language: _validLanguage(language) ?? state.language,
         theme: _validTheme(theme) ?? state.theme,
+        localLoadTimeoutMinutes:
+            _validTimeout(timeout) ?? state.localLoadTimeoutMinutes,
       );
     } catch (_) {
       // Best effort: the defaults stay in place.
@@ -136,14 +163,28 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
 
   Future<void> setLanguage(String language) async {
     if (_validLanguage(language) == null || language == state.language) return;
+    _changed = true;
     state = state.copyWith(language: language);
     await _store(languageKey, language);
   }
 
   Future<void> setTheme(AppThemeVariant theme) async {
     if (theme == state.theme) return;
+    _changed = true;
     state = state.copyWith(theme: theme);
     await _store(themeKey, theme.name);
+  }
+
+  /// How long a local model may be pulled into memory, in minutes.
+  Future<void> setLocalLoadTimeout(int minutes) async {
+    final clamped = minutes.clamp(
+      SettingsState.minLoadTimeoutMinutes,
+      SettingsState.maxLoadTimeoutMinutes,
+    );
+    if (clamped == state.localLoadTimeoutMinutes) return;
+    _changed = true;
+    state = state.copyWith(localLoadTimeoutMinutes: clamped);
+    await _store(loadTimeoutKey, '$clamped');
   }
 
   Future<void> _store(String key, String value) async {
@@ -165,6 +206,18 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       if (variant.name == value) return variant;
     }
     return null;
+  }
+
+  /// Anything stored outside the allowed range is ignored: the default is
+  /// kinder than a slider fighting a stale value.
+  static int? _validTimeout(String? value) {
+    final parsed = int.tryParse(value ?? '');
+    if (parsed == null) return null;
+    if (parsed < SettingsState.minLoadTimeoutMinutes ||
+        parsed > SettingsState.maxLoadTimeoutMinutes) {
+      return null;
+    }
+    return parsed;
   }
 }
 

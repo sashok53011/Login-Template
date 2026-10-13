@@ -7,6 +7,7 @@ import '../models/ai_provider.dart';
 import '../models/ai_stats.dart';
 import '../services/ai_config_sync_service.dart';
 import '../services/ai_stats_service.dart';
+import '../services/local_model_loader.dart';
 import '../services/provider_test_service.dart';
 import '../services/secure_storage_service.dart';
 import 'auth_provider.dart';
@@ -22,6 +23,12 @@ final aiStatsServiceProvider = Provider<AiStatsService>((ref) {
 
 final providerTestServiceProvider = Provider<ProviderTestService>((ref) {
   return ProviderTestService();
+});
+
+/// Talks to a local server only (pulling a model into memory), so it is worth
+/// its own provider: a test can point it at a double without a real network.
+final localModelLoaderProvider = Provider<LocalModelLoader>((ref) {
+  return LocalModelLoader();
 });
 
 /// Where the list currently comes from.

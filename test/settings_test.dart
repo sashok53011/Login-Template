@@ -207,6 +207,7 @@ void main() {
     expect(find.text('Русский'), findsOneWidget);
     expect(find.text('English'), findsOneWidget);
     expect(find.text('Deutsch'), findsOneWidget);
+
     for (final AppThemeVariant variant in AppThemeVariant.values) {
       expect(
         find.text(variant.label('ru')),
@@ -214,6 +215,16 @@ void main() {
         reason: 'the theme ${variant.name} is missing from the list',
       );
     }
+
+    // The local model load timeout sits below the ten themes.
+    await tester.drag(find.byType(ListView), const Offset(0, -700));
+    await tester.pumpAndSettle();
+    expect(find.text('Таймаут загрузки локальных моделей'), findsOneWidget);
+    expect(find.byType(Slider), findsOneWidget);
+
+    // Back to the top: the language radios are needed again below.
+    await tester.drag(find.byType(ListView), const Offset(0, 700));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();
@@ -241,5 +252,44 @@ void main() {
 
     expect(storage.values[SettingsNotifier.languageKey], 'de');
     expect(storage.values[SettingsNotifier.themeKey], 'nightGreen');
+  });
+
+  testWidgets('the local load timeout is clamped and persisted',
+      (WidgetTester tester) async {
+    final storage = _MemStorage();
+    final container = ProviderContainer(
+      overrides: <Override>[
+        secureStorageProvider.overrideWithValue(storage),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(settingsProvider.notifier);
+    expect(container.read(settingsProvider).localLoadTimeoutMinutes, 3);
+
+    await notifier.setLocalLoadTimeout(7);
+    expect(container.read(settingsProvider).localLoadTimeoutMinutes, 7);
+    expect(storage.values[SettingsNotifier.loadTimeoutKey], '7');
+
+    // A slider cannot leave its range, and neither may a stray value.
+    await notifier.setLocalLoadTimeout(42);
+    expect(container.read(settingsProvider).localLoadTimeoutMinutes, 10);
+    await notifier.setLocalLoadTimeout(0);
+    expect(container.read(settingsProvider).localLoadTimeoutMinutes, 1);
+  });
+
+  testWidgets('a stored timeout outside the range is ignored',
+      (WidgetTester tester) async {
+    final storage = _MemStorage()
+      ..values[SettingsNotifier.loadTimeoutKey] = '900';
+    final container = ProviderContainer(
+      overrides: <Override>[
+        secureStorageProvider.overrideWithValue(storage),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(settingsProvider.notifier).load();
+    expect(container.read(settingsProvider).localLoadTimeoutMinutes, 3);
   });
 }

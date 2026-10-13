@@ -72,6 +72,40 @@ class SettingsScreen extends ConsumerWidget {
                 );
               },
             ),
+            const Divider(height: 32),
+            Text(
+              translate('settings.loadTimeoutTitle', language),
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              translate('settings.loadTimeoutHint', language),
+              style: theme.textTheme.bodySmall,
+            ),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Slider(
+                    value: settings.localLoadTimeoutMinutes.toDouble(),
+                    min: SettingsState.minLoadTimeoutMinutes.toDouble(),
+                    max: SettingsState.maxLoadTimeoutMinutes.toDouble(),
+                    divisions: SettingsState.maxLoadTimeoutMinutes -
+                        SettingsState.minLoadTimeoutMinutes,
+                    label: '${settings.localLoadTimeoutMinutes}',
+                    onChanged: (double value) =>
+                        notifier.setLocalLoadTimeout(value.round()),
+                  ),
+                ),
+                SizedBox(
+                  width: 72,
+                  child: Text(
+                    '${settings.localLoadTimeoutMinutes} '
+                    '${translate('settings.loadTimeoutUnit', language)}',
+                    textAlign: TextAlign.end,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),

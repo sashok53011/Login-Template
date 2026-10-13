@@ -9,6 +9,7 @@ import 'package:login_app/main.dart';
 import 'package:login_app/providers/ai_providers_provider.dart';
 import 'package:login_app/providers/auth_provider.dart';
 import 'package:login_app/services/api_client.dart';
+import 'package:login_app/services/local_model_loader.dart';
 import 'package:login_app/services/provider_test_service.dart';
 import 'package:login_app/services/secure_storage_service.dart';
 
@@ -105,6 +106,9 @@ class FakeAiBackend implements HttpClientAdapter {
   /// Answers the provider's own /models endpoint for the test button.
   String providerModelsBody = '{"data":[{"id":"openai-model"}]}';
   int providerModelsStatus = 200;
+
+  /// Paths the local server was asked to pull a model on.
+  final List<String> pullCalls = <String>[];
 
   static ResponseBody _json(int status, Object? body) {
     return ResponseBody.fromString(
@@ -285,12 +289,28 @@ class FakeProviderAdapter implements HttpClientAdapter {
 
   final FakeAiBackend backend;
 
+  /// What a local server answers for POST /api/pull, as Ollama's NDJSON.
+  String pullBody = '{"status":"pulling manifest"}\n'
+      '{"status":"downloading","total":100,"completed":50}\n'
+      '{"status":"success"}\n';
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    if (options.uri.path.endsWith('/api/pull')) {
+      backend.pullCalls.add(options.uri.path);
+      return ResponseBody.fromString(
+        pullBody,
+        200,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['application/x-ndjson'],
+        },
+      );
+    }
+
     final status = backend.providerModelsStatus;
     final body = status == 200
         ? backend.providerModelsBody
@@ -326,8 +346,13 @@ Future<void> pumpApp(
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   final api = ApiClient()..dio.httpClientAdapter = backend;
+  final providerAdapter = FakeProviderAdapter(backend);
   final providerApi = ProviderTestService(
-    dio: Dio()..httpClientAdapter = FakeProviderAdapter(backend),
+    dio: Dio()..httpClientAdapter = providerAdapter,
+  );
+  // The loader talks to a local server, and the same double serves it.
+  final loader = LocalModelLoader(
+    dio: Dio()..httpClientAdapter = providerAdapter,
   );
 
   await tester.pumpWidget(
@@ -336,6 +361,7 @@ Future<void> pumpApp(
         apiClientProvider.overrideWithValue(api),
         secureStorageProvider.overrideWithValue(storage),
         providerTestServiceProvider.overrideWithValue(providerApi),
+        localModelLoaderProvider.overrideWithValue(loader),
       ],
       child: const LoginApp(),
     ),
@@ -784,5 +810,81 @@ void main() {
     // failure is published for it.
     expect(backend.statsPosts, isEmpty);
     expect(find.textContaining('введите ключ'), findsOneWidget);
+  });
+
+  testWidgets('a local provider offers to load its model into memory',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[
+        _entry('ollama', 'Ollama', 1, url: 'http://localhost:11434/v1'),
+      ]),
+    )..providerModelsBody = '{"data":[{"id":"ollama-model"}]}';
+
+    await openProviders(tester, backend, FakeStorage());
+
+    final button = find.widgetWithText(TextButton, 'Проверить и список моделей');
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    final load = find.widgetWithText(TextButton, 'Загрузить в память');
+    expect(load, findsOneWidget);
+    // The hint about the time limit belongs to a local provider only.
+    expect(find.textContaining('таймаут меняется в настройках'), findsOneWidget);
+
+    await tester.ensureVisible(load);
+    await tester.pumpAndSettle();
+    await tester.tap(load);
+
+    // The progress reaches the dialog through Dio's own futures, which live
+    // outside the fake clock, so real time has to pass between the frames.
+    for (var i = 0; i < 20; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.text('Модель загружена в память.').evaluate().isNotEmpty) break;
+    }
+
+    expect(backend.pullCalls, hasLength(1));
+    expect(find.text('Модель загружена в память.'), findsOneWidget);
+  });
+
+  testWidgets('a hosted provider has nothing to load into memory',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[_entry('openai', 'OpenAI', 1)]),
+    );
+
+    await openProviders(tester, backend, FakeStorage());
+
+    final button = find.widgetWithText(TextButton, 'Проверить и список моделей');
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Загрузить в память'), findsNothing);
+  });
+
+  testWidgets('a configured model that is missing still opens the list',
+      (WidgetTester tester) async {
+    // The provider answered, just not with the model the catalogue names —
+    // the list is what someone needs to see to pick another one.
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[_entry('openai', 'OpenAI', 1)]),
+    )..providerModelsBody = '{"data":[{"id":"other-model"}]}';
+
+    await openProviders(tester, backend, FakeStorage());
+
+    final button = find.widgetWithText(TextButton, 'Проверить и список моделей');
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Модели: OpenAI'), findsOneWidget);
+    expect(find.text('other-model'), findsOneWidget);
   });
 }
