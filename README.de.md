@@ -232,6 +232,11 @@ selbst aus, also derselbe Origin). Dort setzt ein Administrator das Häkchen
 „Вход администратора (superuser)" und pflegt den Katalog; ein normales Konto
 bekommt nur die Schalter.
 
+`https://app.devhorizon.online/` selbst ist eine kleine Startseite: erst
+anmelden, danach gibt es **AI Providers** für alle sowie
+**Панель администратора** und **Проверить API** (Health plus Katalog-Diagnose)
+nur für einen Superuser. Die Sitzung ist mit `/ai-providers/` gemeinsam.
+
 Ein Tipp auf die Zeile **API Key** öffnet den Schlüsseldialog; er enthält den
 Knopf **«Вставить из буфера»**, der erst aktiv wird, wenn das Feld fokussiert
 ist.

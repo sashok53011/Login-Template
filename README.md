@@ -225,6 +225,11 @@ The same list is in a browser at `https://app.devhorizon.online/ai-providers/`
 administrator ticks “Вход администратора (superuser)” to manage the catalogue;
 a regular account only gets the switches.
 
+`https://app.devhorizon.online/` itself is a small landing page: it asks you to
+sign in first and then offers **AI Providers** to everybody, plus
+**Панель администратора** and a **Проверить API** check (health and catalogue
+diagnostics) to a superuser only. The session is shared with `/ai-providers/`.
+
 Tapping the **API Key** line opens the key dialog, which has a
 **«Вставить из буфера»** button — it becomes active only once the field is
 focused.

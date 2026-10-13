@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>DevHorizon — app.devhorizon.online</title>
+    <link rel="stylesheet" href="/styles.css?v=1" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">DH</span>
+          <div>
+            <h1>DevHorizon</h1>
+            <p class="muted" id="host-label">app.devhorizon.online</p>
+          </div>
+        </div>
+        <div class="topbar-actions" id="topbar-actions" hidden>
+          <span class="who" id="who"></span>
+          <button class="btn btn-ghost" id="logout-btn" type="button">
+            Выйти
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <!-- ---------------------------------------------------- login view -->
+        <section id="auth-view" class="card auth-card" hidden>
+          <h2 class="card-title">Вход</h2>
+
+          <form id="login-form" class="form">
+            <label>
+              Email
+              <input
+                type="email"
+                name="identity"
+                autocomplete="username"
+                required
+              />
+            </label>
+            <label>
+              Пароль
+              <input
+                type="password"
+                name="password"
+                autocomplete="current-password"
+                required
+              />
+            </label>
+            <label class="row">
+              <span>Вход администратора (superuser)</span>
+              <input type="checkbox" id="admin-login" />
+            </label>
+            <button class="btn btn-primary" type="submit">Войти</button>
+          </form>
+
+          <p class="note" id="auth-note" hidden></p>
+          <p class="note">
+            Ещё нет аккаунта?
+            <a href="/ai-providers/">Зарегистрироваться</a>
+          </p>
+        </section>
+
+        <!-- ----------------------------------------------------- menu view -->
+        <section id="menu-view" hidden>
+          <div class="card">
+            <h2 class="card-title" id="greeting">Здравствуйте!</h2>
+            <p class="note" id="role-note"></p>
+
+            <div class="menu">
+              <a class="btn btn-primary menu-btn" href="/ai-providers/">
+                AI Providers
+              </a>
+              <a
+                class="btn btn-ghost menu-btn"
+                id="admin-btn"
+                href="/_/"
+                hidden
+              >
+                Панель администратора
+              </a>
+              <button
+                class="btn btn-ghost menu-btn"
+                id="api-btn"
+                type="button"
+                hidden
+              >
+                Проверить API
+              </button>
+            </div>
+
+            <pre class="api-out" id="api-out" hidden></pre>
+          </div>
+        </section>
+
+        <p class="error" id="error-note" hidden></p>
+      </main>
+
+      <footer class="footer muted">
+        <span>app.devhorizon.online</span>
+        <span>·</span>
+        <a href="/ai-providers/">AI Providers</a>
+      </footer>
+    </div>
+
+    <script>
+      /* Landing page for app.devhorizon.online.
+       *
+       * Shares the session with /ai-providers/ through the same localStorage
+       * keys, so signing in here also signs you in there.
+       *
+       * The administrator buttons are only rendered for a PocketBase
+       * superuser, which is what /api/ai-config/meta reports as isSuperuser.
+       */
+
+      var TOKEN_KEY = "ai_token";
+      var USER_KEY = "ai_user";
+
+      var state = {
+        token: localStorage.getItem(TOKEN_KEY) || null,
+        user: null,
+        isSuperuser: false,
+      };
+
+      var el = {
+        authView: document.getElementById("auth-view"),
+        menuView: document.getElementById("menu-view"),
+        topbarActions: document.getElementById("topbar-actions"),
+        who: document.getElementById("who"),
+        greeting: document.getElementById("greeting"),
+        roleNote: document.getElementById("role-note"),
+        authNote: document.getElementById("auth-note"),
+        errorNote: document.getElementById("error-note"),
+        loginForm: document.getElementById("login-form"),
+        logoutBtn: document.getElementById("logout-btn"),
+        adminLogin: document.getElementById("admin-login"),
+        adminBtn: document.getElementById("admin-btn"),
+        apiBtn: document.getElementById("api-btn"),
+        apiOut: document.getElementById("api-out"),
+      };
+
+      function safeParse(raw) {
+        try {
+          return raw ? JSON.parse(raw) : null;
+        } catch (err) {
+          return null;
+        }
+      }
+
+      state.user = safeParse(localStorage.getItem(USER_KEY));
+
+      async function api(path, options) {
+        var opts = options || {};
+        var headers = {};
+        if (opts.body !== undefined) {
+          headers["Content-Type"] = "application/json";
+        }
+        if (opts.auth !== false && state.token) {
+          headers["Authorization"] = state.token;
+        }
+
+        var res = await fetch(path, {
+          method: opts.method || "GET",
+          headers: headers,
+          body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        });
+
+        var text = await res.text();
+        var data = null;
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch (err) {
+            data = text;
+          }
+        }
+
+        if (!res.ok) {
+          var error = new Error(humanError(data, res.status));
+          error.status = res.status;
+          throw error;
+        }
+
+        return data;
+      }
+
+      function humanError(data, status) {
+        if (status === 401) {
+          return "Неверный email или пароль, либо сессия истекла.";
+        }
+        var raw =
+          data && typeof data === "object" ? String(data.message || "") : "";
+        if (raw.toLowerCase().indexOf("failed to authenticate") >= 0) {
+          return "Неверный email или пароль.";
+        }
+        return raw || "Запрос не удался (HTTP " + status + ").";
+      }
+
+      function setAuthNote(message) {
+        el.authNote.hidden = !message;
+        el.authNote.textContent = message || "";
+      }
+
+      function setError(message) {
+        el.errorNote.hidden = !message;
+        el.errorNote.textContent = message || "";
+      }
+
+      /* ------------------------------------------------------------------ */
+
+      function render() {
+        var loggedIn = !!state.token;
+
+        el.authView.hidden = loggedIn;
+        el.menuView.hidden = !loggedIn;
+        el.topbarActions.hidden = !loggedIn;
+
+        // Administrator actions exist only for a superuser.
+        el.adminBtn.hidden = !state.isSuperuser;
+        el.apiBtn.hidden = !state.isSuperuser;
+
+        if (!loggedIn) return;
+
+        var name =
+          (state.user && (state.user.name || state.user.email)) || "друг";
+        el.who.textContent = name + (state.isSuperuser ? " (админ)" : "");
+        el.greeting.textContent = "Здравствуйте, " + name + "!";
+        el.roleNote.textContent = state.isSuperuser
+          ? "Вы вошли как администратор: доступны панель администратора и проверка API."
+          : "Вы вошли как пользователь: доступен список AI-провайдеров.";
+      }
+
+      async function doLogin(identity, password, isAdmin) {
+        var collectionName = isAdmin ? "_superusers" : "users";
+
+        var data = await api(
+          "/api/collections/" + collectionName + "/auth-with-password",
+          {
+            method: "POST",
+            auth: false,
+            body: { identity: identity, password: password },
+          },
+        );
+
+        var record = data.record || {};
+        state.token = data.token;
+        state.user = {
+          name: record.name || record.email || "superuser",
+          email: record.email || "",
+          isAdmin: !!isAdmin,
+        };
+        state.isSuperuser = !!isAdmin;
+
+        localStorage.setItem(TOKEN_KEY, data.token);
+        localStorage.setItem(USER_KEY, JSON.stringify(state.user));
+      }
+
+      function doLogout() {
+        state.token = null;
+        state.user = null;
+        state.isSuperuser = false;
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        el.apiOut.hidden = true;
+        el.apiOut.textContent = "";
+        render();
+      }
+
+      /// Re-reads the role from the server: it is the only side that knows
+      /// whether the token belongs to a superuser.
+      async function refreshRole() {
+        try {
+          var meta = await api("/api/ai-config/meta");
+          state.isSuperuser = meta && meta.isSuperuser === true;
+          setError("");
+          render();
+        } catch (err) {
+          if (err.status === 401) {
+            doLogout();
+            setAuthNote("Сессия истекла, войдите заново.");
+            return;
+          }
+          setError("Не удалось получить данные с сервера: " + err.message);
+        }
+      }
+
+      /// Health plus the catalogue diagnostics, for administrators only.
+      async function checkApi() {
+        el.apiOut.hidden = false;
+        el.apiOut.textContent = "Проверяем…";
+
+        var lines = [];
+
+        try {
+          var health = await api("/api/health", { auth: false });
+          lines.push("/api/health → " + JSON.stringify(health));
+        } catch (err) {
+          lines.push("/api/health → ошибка: " + err.message);
+        }
+
+        try {
+          var meta = await api("/api/ai-config/meta");
+          lines.push("");
+          lines.push("/api/ai-config/meta:");
+          lines.push("  провайдеров в каталоге: " + meta.catalogueCount);
+          lines.push("  предложений от пользователей: " + meta.proposalCount);
+          lines.push("  из них моих: " + meta.myProposalCount);
+          lines.push("  файл каталога: " + meta.catalogue);
+          lines.push("  существует: " + (meta.catalogueExists ? "да" : "нет"));
+          lines.push("  каталог данных: " + meta.dir);
+          lines.push("  superuser: " + (meta.isSuperuser ? "да" : "нет"));
+        } catch (err) {
+          lines.push("");
+          lines.push("/api/ai-config/meta → ошибка: " + err.message);
+        }
+
+        el.apiOut.textContent = lines.join("\n");
+      }
+
+      el.loginForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        var form = event.target;
+        setAuthNote("");
+        try {
+          await doLogin(
+            form.identity.value.trim(),
+            form.password.value,
+            el.adminLogin.checked,
+          );
+          form.reset();
+          render();
+          refreshRole();
+        } catch (err) {
+          setAuthNote(err.message);
+        }
+      });
+
+      el.logoutBtn.addEventListener("click", doLogout);
+      el.apiBtn.addEventListener("click", checkApi);
+
+      if (state.token) {
+        render();
+        refreshRole();
+      } else {
+        render();
+      }
+    </script>
+  </body>
+</html>
