@@ -226,6 +226,13 @@ Eigene Einträge darf der Benutzer bearbeiten und löschen. Bei einem Eintrag de
 Administrators geht genau eines: den eigenen API-Key hinterlegen, der auf dem
 Gerät bleibt.
 
+Beim Löschen geht nichts verloren: was den Katalog verlässt — ein Eintrag des
+Administrators oder ein vom Autor entferntes Vorhaben — landet in einem Papierkorb
+(`pb_data/ai-config/trash.json`, die letzten 200 Einträge) samt der Angabe, wer
+ihn entfernt hat, und lässt sich auf der Webseite wiederherstellen. Die
+Wiederherstellung nutzt dieselbe `id` und setzt `status: dead` zurück, damit die
+bereits eingegebenen API-Keys weiter funktionieren.
+
 Dieselbe Liste gibt es im Browser unter
 `https://app.devhorizon.online/ai-providers/` (PocketBase liefert die Seite
 selbst aus, also derselbe Origin). Dort setzt ein Administrator das Häkchen

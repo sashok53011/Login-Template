@@ -220,6 +220,12 @@ A regular user may edit and delete their **own** entries. An administrator's
 entry allows exactly one thing: entering your own API key, which stays on the
 device.
 
+Nothing is lost on deletion: whatever leaves the catalogue — an administrator's
+entry or a proposal its author removed — is kept in a bin
+(`pb_data/ai-config/trash.json`, the last 200 records) together with who removed
+it, and can be restored from the web page. Restoring uses the same `id` and
+clears `status: dead`, so the API keys people already entered keep working.
+
 The same list is in a browser at `https://app.devhorizon.online/ai-providers/`
 (PocketBase serves that page itself, so it is the same origin). There an
 administrator ticks “Вход администратора (superuser)” to manage the catalogue;

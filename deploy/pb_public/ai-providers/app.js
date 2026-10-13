@@ -16,6 +16,7 @@ const state = {
   user: safeParse(localStorage.getItem(USER_KEY)),
   config: null,
   stats: {},
+  trash: [],
   canEdit: false,
   editingId: null,
 };
@@ -44,6 +45,12 @@ const el = {
   logoutBtn: document.getElementById("logout-btn"),
   editorCancel: document.getElementById("editor-cancel"),
   adminLogin: document.getElementById("admin-login"),
+  trashBtn: document.getElementById("trash-btn"),
+  trash: document.getElementById("trash"),
+  trashList: document.getElementById("trash-list"),
+  trashEmpty: document.getElementById("trash-empty"),
+  trashClose: document.getElementById("trash-close"),
+  trashPurgeAll: document.getElementById("trash-purge-all"),
 };
 
 function safeParse(raw) {
@@ -334,8 +341,10 @@ function render() {
   }
 
   if (loggedIn) {
-    // Adding, editing and deleting is reserved for the superuser.
+    // Adding, editing and deleting is reserved for the superuser, and so is
+    // the bin.
     el.addBtn.hidden = !state.canEdit;
+    el.trashBtn.hidden = !state.canEdit;
     renderProviders();
     stampSync();
   }
@@ -647,6 +656,145 @@ function submitEditor(event) {
   persist();
 }
 
+/* ----------------------------------------------------------------- bin */
+
+function showTrashError(message) {
+  const node = document.getElementById("trash-error");
+  node.hidden = !message;
+  node.textContent = message || "";
+}
+
+async function openTrash() {
+  el.trash.showModal();
+  await refreshTrash();
+}
+
+async function refreshTrash() {
+  el.trashList.textContent = "";
+  el.trashEmpty.hidden = true;
+  showTrashError("");
+
+  try {
+    const data = await api("/api/ai-trash");
+    state.trash = data && Array.isArray(data.items) ? data.items : [];
+  } catch (err) {
+    state.trash = [];
+    showTrashError("Не удалось открыть корзину: " + err.message);
+  }
+
+  renderTrash();
+}
+
+function renderTrash() {
+  el.trashList.textContent = "";
+  el.trashEmpty.hidden = state.trash.length > 0;
+
+  state.trash.forEach(function (item) {
+    const provider = item.provider || {};
+
+    const row = document.createElement("div");
+    row.className = "trash-row";
+
+    const left = document.createElement("div");
+
+    const title = document.createElement("h3");
+    title.textContent = provider.name || provider.id;
+    const badge = document.createElement("span");
+    badge.className =
+      "badge" + (item.source === "proposal" ? " badge-user" : "");
+    badge.textContent = item.source === "proposal" ? "предложение" : "каталог";
+    title.appendChild(badge);
+    left.appendChild(title);
+
+    const what = document.createElement("div");
+    what.className = "trash-meta";
+    what.textContent = (provider.model || "") + " · " + (provider.url || "");
+    left.appendChild(what);
+
+    const when = document.createElement("div");
+    when.className = "trash-meta";
+    when.textContent =
+      "Удалён " +
+      shortTime(item.deletedAt) +
+      (item.deletedByName ? " — " + item.deletedByName : "");
+    left.appendChild(when);
+
+    row.appendChild(left);
+
+    const actions = document.createElement("div");
+    actions.className = "provider-actions";
+    actions.appendChild(
+      miniButton("Восстановить", function () {
+        restoreFromTrash(provider.id, provider.name || provider.id);
+      }),
+    );
+    actions.appendChild(
+      miniButton("Удалить навсегда", function () {
+        purgeOne(provider.id, provider.name || provider.id);
+      }),
+    );
+    row.appendChild(actions);
+
+    el.trashList.appendChild(row);
+  });
+}
+
+async function restoreFromTrash(id, name) {
+  if (!confirm("Вернуть провайдера «" + name + "» в каталог?")) return;
+
+  showTrashError("");
+  try {
+    const res = await api("/api/ai-trash/restore", {
+      method: "POST",
+      body: { id: id },
+    });
+    if (res && res.restored) {
+      await loadConfig();
+      render();
+    } else {
+      showTrashError((res && res.reason) || "Не удалось восстановить.");
+    }
+  } catch (err) {
+    showTrashError("Не удалось восстановить: " + err.message);
+  }
+
+  await refreshTrash();
+}
+
+async function purgeOne(id, name) {
+  if (
+    !confirm(
+      "Удалить «" + name + "» из корзины навсегда? Восстановить будет нельзя.",
+    )
+  ) {
+    return;
+  }
+
+  showTrashError("");
+  try {
+    await api("/api/ai-trash/" + encodeURIComponent(id), { method: "DELETE" });
+  } catch (err) {
+    showTrashError("Не удалось удалить: " + err.message);
+  }
+
+  await refreshTrash();
+}
+
+async function purgeAllTrash() {
+  if (!confirm("Очистить корзину полностью? Восстановить будет нельзя.")) {
+    return;
+  }
+
+  showTrashError("");
+  try {
+    await api("/api/ai-trash", { method: "DELETE" });
+  } catch (err) {
+    showTrashError("Не удалось очистить корзину: " + err.message);
+  }
+
+  await refreshTrash();
+}
+
 /* --------------------------------------------------------------- wiring */
 
 let pending = false;
@@ -744,6 +892,11 @@ el.editorForm.addEventListener("submit", submitEditor);
 el.editorCancel.addEventListener("click", function () {
   el.editor.close();
 });
+el.trashBtn.addEventListener("click", openTrash);
+el.trashClose.addEventListener("click", function () {
+  el.trash.close();
+});
+el.trashPurgeAll.addEventListener("click", purgeAllTrash);
 
 el.host.textContent = location.host;
 showAuth();

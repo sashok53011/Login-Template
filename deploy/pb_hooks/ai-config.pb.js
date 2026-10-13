@@ -54,7 +54,16 @@ routerAdd(
     }
 
     if (e.hasSuperuserAuth()) {
-      lib.writeCatalogue(body);
+      // Remember who removed what: it lands in the bin with this name.
+      let actorId = "_superuser";
+      let actorName = "superuser";
+      if (e.auth) {
+        actorId = e.auth.id;
+        const mail = e.auth.get("email");
+        actorName = mail ? String(mail) : e.auth.id;
+      }
+
+      lib.writeCatalogue(body, { id: actorId, name: actorName });
       return e.json(200, lib.viewFor({}, true, ""));
     }
 

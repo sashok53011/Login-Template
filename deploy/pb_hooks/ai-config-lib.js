@@ -182,7 +182,7 @@ function writeCatalogueDoc(providers) {
   return doc;
 }
 
-function writeCatalogue(incoming) {
+function writeCatalogue(incoming, actor) {
   const current = readCatalogue();
   const currentById = {};
   for (const provider of current.providers) {
@@ -219,8 +219,151 @@ function writeCatalogue(incoming) {
     providers.push(provider);
   }
 
+  // Whatever is gone compared to what was stored goes to the bin.
+  const removed = [];
+  for (const provider of current.providers) {
+    if (!seen[provider.id]) {
+      removed.push(provider);
+    }
+  }
+
   writeCatalogueDoc(providers);
+  pushToTrash(removed, actor);
+
   return readCatalogue();
+}
+
+// --------------------------------------------------------------- the bin
+
+/// How many removed providers are kept. The oldest fall off the end.
+const TRASH_LIMIT = 200;
+
+function trashPath() {
+  return configDir() + "/trash.json";
+}
+
+/// Newest first.
+function readTrash() {
+  const parsed = readJson(trashPath());
+  if (!parsed || !Array.isArray(parsed.items)) {
+    return [];
+  }
+
+  const items = [];
+  for (const item of parsed.items) {
+    if (item && item.provider && item.provider.id) {
+      items.push(item);
+    }
+  }
+  return items;
+}
+
+function writeTrash(items) {
+  const capped = items.slice(0, TRASH_LIMIT);
+  writeJson(trashPath(), {
+    version: CATALOGUE_VERSION,
+    updated: new Date().toISOString(),
+    items: capped,
+  });
+  return capped;
+}
+
+/// Moves removed providers into the bin. An id can only sit there once, so
+/// deleting the same provider again just refreshes its record.
+function pushToTrash(providers, actor) {
+  if (!providers || !providers.length) {
+    return readTrash();
+  }
+
+  const ids = {};
+  for (const provider of providers) {
+    ids[provider.id] = true;
+  }
+
+  const kept = [];
+  for (const item of readTrash()) {
+    if (!ids[item.provider.id]) {
+      kept.push(item);
+    }
+  }
+
+  const now = new Date().toISOString();
+  const fresh = [];
+  for (const provider of providers) {
+    fresh.push({
+      provider: provider,
+      deletedAt: now,
+      deletedBy: asText(actor && actor.id),
+      deletedByName: asText(actor && actor.name),
+      source: provider.origin === ORIGIN_USER ? "proposal" : "admin",
+    });
+  }
+
+  return writeTrash(fresh.concat(kept));
+}
+
+/// Puts a binned provider back under the same id and marks it working again:
+/// restoring something means we consider it alive.
+function restoreFromTrash(id) {
+  const target = safeId(id);
+
+  const items = readTrash();
+  let entry = null;
+  const rest = [];
+  for (const item of items) {
+    if (!entry && item.provider.id === target) {
+      entry = item;
+      continue;
+    }
+    rest.push(item);
+  }
+
+  if (!entry) {
+    return { restored: false, reason: "В корзине такой записи нет." };
+  }
+
+  writeTrash(rest);
+
+  const catalogue = readCatalogue();
+  for (const provider of catalogue.providers) {
+    if (provider.id === target) {
+      return {
+        restored: false,
+        reason: "Провайдер уже есть в каталоге — запись убрана из корзины.",
+      };
+    }
+  }
+
+  const provider = sanitize(entry.provider);
+  if (!provider) {
+    return { restored: false, reason: "Запись в корзине повреждена." };
+  }
+  provider.status = STATUS_ACTIVE;
+
+  writeCatalogueDoc(catalogue.providers.concat([provider]));
+  return { restored: true, provider: provider };
+}
+
+/// Drops one entry from the bin for good.
+function purgeTrash(id) {
+  const target = safeId(id);
+  const items = readTrash();
+
+  const rest = [];
+  for (const item of items) {
+    if (item.provider.id !== target) {
+      rest.push(item);
+    }
+  }
+
+  writeTrash(rest);
+  return { removed: items.length - rest.length };
+}
+
+function purgeAllTrash() {
+  const removed = readTrash().length;
+  writeTrash([]);
+  return { removed: removed };
 }
 
 // ------------------------------------------------------------- user flags
@@ -354,17 +497,20 @@ function applyUserWrite(userId, userName, incoming) {
   }
 
   // Whatever the user did not send back.
+  const removed = [];
   for (const provider of catalogue.providers) {
     if (seen[provider.id]) {
       continue;
     }
     if (isOwnProposal(provider, userId)) {
-      continue; // the user deleted their own proposal
+      removed.push(provider); // the user deleted their own proposal
+      continue;
     }
     kept.push(provider);
   }
 
   writeCatalogueDoc(kept);
+  pushToTrash(removed, { id: userId, name: userName });
   writeFlags(userId, flags);
   return { catalogue: readCatalogue(), flags: flags };
 }
@@ -462,6 +608,11 @@ module.exports = {
   readCatalogue: readCatalogue,
   writeCatalogue: writeCatalogue,
   applyUserWrite: applyUserWrite,
+  readTrash: readTrash,
+  pushToTrash: pushToTrash,
+  restoreFromTrash: restoreFromTrash,
+  purgeTrash: purgeTrash,
+  purgeAllTrash: purgeAllTrash,
   readFlags: readFlags,
   writeFlags: writeFlags,
   clearFlags: clearFlags,

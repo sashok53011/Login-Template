@@ -115,6 +115,9 @@
             <button class="btn btn-ghost" id="reload-btn" type="button">
               Обновить
             </button>
+            <button class="btn btn-ghost" id="trash-btn" type="button" hidden>
+              Корзина
+            </button>
             <span class="spacer"></span>
             <span class="muted" id="sync-status">—</span>
           </div>
@@ -224,6 +227,28 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=6"></script>
+    <dialog id="trash">
+      <div class="trash-body">
+        <h2>Корзина</h2>
+        <p class="note">
+          Удалённые провайдеры хранятся здесь (последние 200) вместе с тем, кто
+          их удалил. Восстановление возвращает провайдера под тем же id, а
+          значит и ключи, которые пользователи уже ввели на устройствах.
+        </p>
+        <div id="trash-list" class="providers"></div>
+        <p class="empty" id="trash-empty" hidden>Корзина пуста.</p>
+        <p class="error" id="trash-error" hidden></p>
+        <div class="dialog-actions">
+          <button class="btn btn-ghost" type="button" id="trash-purge-all">
+            Очистить корзину
+          </button>
+          <button class="btn btn-primary" type="button" id="trash-close">
+            Закрыть
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <script src="app.js?v=7"></script>
   </body>
 </html>
