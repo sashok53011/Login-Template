@@ -1056,7 +1056,9 @@ class _ModelsDialog extends ConsumerStatefulWidget {
 }
 
 class _ModelsDialogState extends ConsumerState<_ModelsDialog> {
-  final CancelToken _cancelToken = CancelToken();
+  /// Fresh for every pull: a cancelled token would refuse the next request
+  /// straight away.
+  CancelToken? _cancelToken;
 
   /// The model being pulled right now, or null while nothing is running.
   String? _loading;
@@ -1077,6 +1079,7 @@ class _ModelsDialogState extends ConsumerState<_ModelsDialog> {
     if (!_canLoad) return;
 
     final minutes = ref.read(settingsProvider).localLoadTimeoutMinutes;
+    _cancelToken = CancelToken();
     setState(() {
       _loading = model;
       _fraction = null;
@@ -1110,7 +1113,8 @@ class _ModelsDialogState extends ConsumerState<_ModelsDialog> {
   }
 
   void _cancel() {
-    if (!_cancelToken.isCancelled) _cancelToken.cancel();
+    final token = _cancelToken;
+    if (token != null && !token.isCancelled) token.cancel();
   }
 
   /// Turns a result key into a sentence. The provider's own wording passes

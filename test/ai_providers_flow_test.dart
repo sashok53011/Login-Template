@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -109,6 +110,10 @@ class FakeAiBackend implements HttpClientAdapter {
 
   /// Paths the local server was asked to pull a model on.
   final List<String> pullCalls = <String>[];
+
+  /// The adapter serving the provider's own API, handed over by [pumpApp] so a
+  /// test can change how it behaves while the screen is up.
+  FakeProviderAdapter? providerAdapter;
 
   static ResponseBody _json(int status, Object? body) {
     return ResponseBody.fromString(
@@ -294,6 +299,15 @@ class FakeProviderAdapter implements HttpClientAdapter {
       '{"status":"downloading","total":100,"completed":50}\n'
       '{"status":"success"}\n';
 
+  /// Set to keep the pull open forever, so a test can cancel it or let the
+  /// time limit run out.
+  bool pullHangs = false;
+
+  static const Map<String, List<String>> _ndjsonHeaders =
+      <String, List<String>>{
+    Headers.contentTypeHeader: <String>['application/x-ndjson'],
+  };
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -302,12 +316,16 @@ class FakeProviderAdapter implements HttpClientAdapter {
   ) async {
     if (options.uri.path.endsWith('/api/pull')) {
       backend.pullCalls.add(options.uri.path);
+      if (pullHangs) {
+        final controller = StreamController<Uint8List>();
+        // Dio tells the adapter that the caller gave up.
+        cancelFuture?.then((_) => controller.close());
+        return ResponseBody(controller.stream, 200, headers: _ndjsonHeaders);
+      }
       return ResponseBody.fromString(
         pullBody,
         200,
-        headers: <String, List<String>>{
-          Headers.contentTypeHeader: <String>['application/x-ndjson'],
-        },
+        headers: _ndjsonHeaders,
       );
     }
 
@@ -347,6 +365,7 @@ Future<void> pumpApp(
 
   final api = ApiClient()..dio.httpClientAdapter = backend;
   final providerAdapter = FakeProviderAdapter(backend);
+  backend.providerAdapter = providerAdapter;
   final providerApi = ProviderTestService(
     dio: Dio()..httpClientAdapter = providerAdapter,
   );
@@ -848,6 +867,58 @@ void main() {
     }
 
     expect(backend.pullCalls, hasLength(1));
+    expect(find.text('Модель загружена в память.'), findsOneWidget);
+  });
+
+  testWidgets('a cancelled load can be started again',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[
+        _entry('ollama', 'Ollama', 1, url: 'http://localhost:11434/v1'),
+      ]),
+    )..providerModelsBody = '{"data":[{"id":"ollama-model"}]}';
+
+    await openProviders(tester, backend, FakeStorage());
+
+    final button = find.widgetWithText(TextButton, 'Проверить и список моделей');
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    Future<void> pumpLoad() async {
+      final load = find.widgetWithText(TextButton, 'Загрузить в память');
+      await tester.ensureVisible(load);
+      await tester.pumpAndSettle();
+      await tester.tap(load);
+      for (var i = 0; i < 20; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    // The server keeps the request open this time.
+    backend.providerAdapter!.pullHangs = true;
+    await pumpLoad();
+
+    final cancel = find.widgetWithText(TextButton, 'Отмена');
+    expect(cancel, findsOneWidget);
+    await tester.tap(cancel);
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text('Загрузка отменена.'), findsOneWidget);
+
+    // A cancelled token must not spoil the next attempt.
+    backend.providerAdapter!.pullHangs = false;
+    await pumpLoad();
+
+    expect(backend.pullCalls, hasLength(2));
     expect(find.text('Модель загружена в память.'), findsOneWidget);
   });
 
