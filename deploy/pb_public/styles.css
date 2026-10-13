@@ -637,7 +637,35 @@ dialog::backdrop {
   color: var(--danger);
 }
 
+/* -------------------------------------------------------------- API keys */
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.key-label {
+  color: var(--muted);
+}
+
+.key-value {
+  overflow-wrap: anywhere;
+}
+
+#key-form {
+  padding: 20px;
+  width: min(520px, calc(100vw - 32px));
+}
+
+#key-form h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
 /* ----------------------------------------------------------------- bin */
+
 .blocked {
   display: flex;
   flex-direction: column;

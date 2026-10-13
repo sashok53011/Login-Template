@@ -73,6 +73,28 @@ const STR = {
     disabledForAllHint:
       "Администратор отключил этого провайдера для всех. Выключите его, чтобы убрать из списка.",
     turnOff: "Выключить",
+    keyRowLabel: "API Key",
+    keyNotSet: "(не задан)",
+    keyEnter: "Ввести ключ",
+    keyDialogNote:
+      "Ключ хранится только в этом браузере и уходит напрямую провайдеру — на наш сервер он не отправляется.",
+    keyPaste: "Вставить из буфера",
+    keyClear: "Очистить",
+    testAndModels: "Проверить и список моделей",
+    testDisabledHint: "Проверка недоступна: провайдер помечен администратором.",
+    noKey: "Сначала введите API-ключ.",
+    providerStatus: "Провайдер ответил ошибкой {n}.",
+    modelsEmpty: "Провайдер ответил, но список моделей пуст.",
+    corsOrNetwork:
+      "Не удалось обратиться к провайдеру: браузер заблокировал запрос (CORS) или нет связи.",
+    modelsNotOffered: "Модель {model} не предлагается провайдером.",
+    providerFailed: "Проверка не удалась.",
+    modelsTitle: "Модели: {name}",
+    modelsEndpoint: "Адрес: {url}",
+    modelsConfigured: "Настроена: {model}",
+    modelsNoStats: "нет данных",
+    clipboardFailed:
+      "Не удалось прочитать буфер обмена. Разрешите доступ или вставьте вручную.",
     statusDisabled: "Отключён для всех — убрать у всех",
     rowPriority: "Приоритет",
     linkLogin: "Страница логина",
@@ -182,6 +204,28 @@ const STR = {
     disabledForAllHint:
       "The administrator switched this provider off for everybody. Turn it off to remove it from your list.",
     turnOff: "Turn off",
+    keyRowLabel: "API Key",
+    keyNotSet: "(not set)",
+    keyEnter: "Enter key",
+    keyDialogNote:
+      "The key is kept in this browser only and goes straight to the provider — it is never sent to our server.",
+    keyPaste: "Paste from clipboard",
+    keyClear: "Clear",
+    testAndModels: "Check and list models",
+    testDisabledHint: "The check is unavailable: the provider was marked by an administrator.",
+    noKey: "Enter an API key first.",
+    providerStatus: "The provider answered with error {n}.",
+    modelsEmpty: "The provider answered, but the model list is empty.",
+    corsOrNetwork:
+      "Could not reach the provider: the browser blocked the request (CORS) or there is no connection.",
+    modelsNotOffered: "The provider does not offer the model {model}.",
+    providerFailed: "The check failed.",
+    modelsTitle: "Models: {name}",
+    modelsEndpoint: "Endpoint: {url}",
+    modelsConfigured: "Configured: {model}",
+    modelsNoStats: "no data",
+    clipboardFailed:
+      "Could not read the clipboard. Allow access or paste it by hand.",
     statusDisabled: "Switched off for everybody - remove for all",
     rowPriority: "Priority",
     linkLogin: "Login page",
@@ -291,6 +335,28 @@ const STR = {
     disabledForAllHint:
       "Der Administrator hat diesen Anbieter für alle abgeschaltet. Schalten Sie ihn aus, um ihn aus der Liste zu entfernen.",
     turnOff: "Ausschalten",
+    keyRowLabel: "API Key",
+    keyNotSet: "(nicht festgelegt)",
+    keyEnter: "Schlüssel eingeben",
+    keyDialogNote:
+      "Der Schlüssel liegt nur in diesem Browser und geht direkt an den Anbieter — an unseren Server wird er nie geschickt.",
+    keyPaste: "Aus der Zwischenablage einfügen",
+    keyClear: "Leeren",
+    testAndModels: "Prüfen und Modelle auflisten",
+    testDisabledHint: "Die Prüfung ist nicht verfügbar: Der Anbieter wurde von einem Administrator markiert.",
+    noKey: "Geben Sie zuerst einen API-Schlüssel ein.",
+    providerStatus: "Der Anbieter antwortete mit Fehler {n}.",
+    modelsEmpty: "Der Anbieter hat geantwortet, die Modellliste ist aber leer.",
+    corsOrNetwork:
+      "Der Anbieter war nicht erreichbar: Der Browser hat die Anfrage blockiert (CORS) oder es gibt keine Verbindung.",
+    modelsNotOffered: "Der Anbieter bietet das Modell {model} nicht an.",
+    providerFailed: "Die Prüfung ist fehlgeschlagen.",
+    modelsTitle: "Modelle: {name}",
+    modelsEndpoint: "Adresse: {url}",
+    modelsConfigured: "Konfiguriert: {model}",
+    modelsNoStats: "keine Daten",
+    clipboardFailed:
+      "Die Zwischenablage konnte nicht gelesen werden. Erlauben Sie den Zugriff oder fügen Sie den Wert von Hand ein.",
     statusDisabled: "Für alle abgeschaltet - überall entfernen",
     rowPriority: "Priorität",
     linkLogin: "Anmeldeseite",
@@ -526,6 +592,7 @@ async function doLogin(identity, password, isAdmin) {
   const record = data.record || {};
   state.token = data.token;
   state.user = {
+    id: record.id || "",
     name: record.name || record.email || "superuser",
     email: record.email || "",
     isAdmin: !!isAdmin,
@@ -796,6 +863,28 @@ function providerCard(provider) {
   addRow(dl, t("rowPriority"), String(provider.fallbackPriority));
   body.appendChild(dl);
 
+  // The API key lives in this browser only — it is never sent to our server,
+  // it goes straight from here to the provider.
+  const keyRow = document.createElement("div");
+  keyRow.className = "key-row";
+
+  const keyLabel = document.createElement("span");
+  keyLabel.className = "key-label";
+  keyLabel.textContent = t("keyRowLabel");
+
+  const keyValue = document.createElement("span");
+  keyValue.className = "key-value";
+  keyValue.textContent = apiKeyFor(provider.id) ? "••••••••" : t("keyNotSet");
+
+  keyRow.appendChild(keyLabel);
+  keyRow.appendChild(keyValue);
+  keyRow.appendChild(
+    miniButton(t("keyEnter"), function () {
+      openKeyDialog(provider);
+    }),
+  );
+  body.appendChild(keyRow);
+
   // Switched off for everybody: whoever still has it on is asked to turn it
   // off, which is what finally removes it from that user's list.
   if (provider.status === "disabled_for_all") {
@@ -836,6 +925,16 @@ function providerCard(provider) {
   if (provider.getApiKeyUrl) {
     links.appendChild(extLink(provider.getApiKeyUrl, t("linkGetKey")));
   }
+
+  const testBtn = miniButton(t("testAndModels"), function () {
+    testProvider(provider);
+  });
+  if (provider.status === "dead" || provider.status === "disabled_for_all") {
+    testBtn.disabled = true;
+    testBtn.title = t("testDisabledHint");
+  }
+  links.appendChild(testBtn);
+
   if (links.childNodes.length) {
     body.appendChild(links);
   }
@@ -1177,6 +1276,198 @@ async function purgeAllTrash() {
   await refreshTrash();
 }
 
+/* -------------------------------------------------------------- API keys */
+
+/* The key is kept in this browser only, keyed by user and provider. It is
+ * never sent to our server: the browser calls the provider directly, and only
+ * the outcome of the test goes to /api/ai-stats. */
+
+function keyStorageId(providerId) {
+  const userId = (state.user && state.user.id) || "anon";
+  return "ai_key_" + userId + "_" + providerId;
+}
+
+function apiKeyFor(providerId) {
+  try {
+    return localStorage.getItem(keyStorageId(providerId)) || "";
+  } catch (err) {
+    return "";
+  }
+}
+
+function setApiKey(providerId, value) {
+  try {
+    if (value) {
+      localStorage.setItem(keyStorageId(providerId), value);
+    } else {
+      localStorage.removeItem(keyStorageId(providerId));
+    }
+  } catch (err) {
+    /* storage may be unavailable */
+  }
+}
+
+let keyTarget = null;
+
+function openKeyDialog(provider) {
+  keyTarget = provider;
+  document.getElementById("key-title").textContent = provider.name;
+  document.getElementById("key-form").apiKey.value = apiKeyFor(provider.id);
+  document.getElementById("key-dialog").showModal();
+}
+
+function saveKeyFromDialog(event) {
+  event.preventDefault();
+  if (!keyTarget) return;
+
+  setApiKey(keyTarget.id, event.target.apiKey.value.trim());
+  document.getElementById("key-dialog").close();
+  renderProviders();
+}
+
+function modelsEndpoint(baseUrl) {
+  let url = (baseUrl || "").trim().replace(/\/+$/, "");
+  if (url.indexOf("anthropic.com") >= 0 && url.indexOf("/v1") < 0) {
+    url += "/v1";
+  }
+  return url + "/models";
+}
+
+function extractModels(data) {
+  const out = [];
+  if (!data) return out;
+
+  [data.data, data.models].forEach(function (list) {
+    if (!Array.isArray(list)) return;
+    list.forEach(function (item) {
+      let id = null;
+      if (typeof item === "string") {
+        id = item;
+      } else if (item && typeof item === "object") {
+        id = item.id || item.name;
+      }
+      if (id && String(id).trim()) out.push(String(id));
+    });
+  });
+
+  return out;
+}
+
+/// Asks the provider for its model list, straight from this browser, and
+/// publishes the outcome so the shared counters move.
+async function testProvider(provider) {
+  const apiKey = apiKeyFor(provider.id);
+  if (!apiKey) {
+    alert(t("noKey"));
+    return;
+  }
+  if (provider.status === "dead" || provider.status === "disabled_for_all") {
+    alert(t("testDisabledHint"));
+    return;
+  }
+
+  const endpoint = modelsEndpoint(provider.url);
+  const headers = { Accept: "application/json" };
+  if (provider.url.indexOf("anthropic.com") >= 0) {
+    headers["x-api-key"] = apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+    headers["anthropic-dangerous-direct-browser-access"] = "true";
+  } else {
+    headers["Authorization"] = "Bearer " + apiKey;
+  }
+
+  let ok = false;
+  let error = "";
+  let models = [];
+
+  try {
+    const res = await fetch(endpoint, { headers: headers });
+    if (!res.ok) {
+      error = t("providerStatus", { n: String(res.status) });
+    } else {
+      models = extractModels(await res.json());
+      if (!models.length) {
+        error = t("modelsEmpty");
+      } else {
+        ok = true;
+      }
+    }
+  } catch (err) {
+    error = t("corsOrNetwork");
+  }
+
+  const wanted = (provider.model || "").toLowerCase();
+  const offers = models.some(function (name) {
+    return name.toLowerCase() === wanted;
+  });
+  if (ok && wanted && !offers) {
+    ok = false;
+    error = t("modelsNotOffered", { model: provider.model });
+  }
+
+  try {
+    await api("/api/ai-stats", {
+      method: "POST",
+      body: {
+        providerId: provider.id,
+        model: provider.model,
+        ok: ok,
+        error: error,
+      },
+    });
+    await refreshStats();
+  } catch (err) {
+    /* statistics are secondary */
+  }
+
+  if (!ok) {
+    alert(error || t("providerFailed"));
+    return;
+  }
+
+  showModels(provider, endpoint, models);
+}
+
+function showModels(provider, endpoint, models) {
+  document.getElementById("models-title").textContent = t("modelsTitle", {
+    name: provider.name,
+  });
+  document.getElementById("models-endpoint").textContent = t("modelsEndpoint", {
+    url: endpoint,
+  });
+  document.getElementById("models-configured").textContent = t(
+    "modelsConfigured",
+    { model: provider.model },
+  );
+
+  const providerStats = state.stats[provider.id];
+  const list = document.getElementById("models-list");
+  list.textContent = "";
+
+  models.sort().forEach(function (name) {
+    const row = document.createElement("div");
+    row.className = "trash-row";
+
+    const title = document.createElement("h3");
+    title.textContent = name;
+    if (name === provider.model) {
+      title.className = "stats-current";
+    }
+    row.appendChild(title);
+
+    const stats =
+      providerStats && providerStats.models ? providerStats.models[name] : null;
+    const value = document.createElement("span");
+    value.className = "trash-meta";
+    value.textContent = stats ? formatStats(stats) : t("modelsNoStats");
+    row.appendChild(value);
+
+    list.appendChild(row);
+  });
+
+  document.getElementById("models-dialog").showModal();
+}
+
 /* --------------------------------------------------------------- wiring */
 
 let pending = false;
@@ -1279,6 +1570,25 @@ el.trashClose.addEventListener("click", function () {
   el.trash.close();
 });
 el.trashPurgeAll.addEventListener("click", purgeAllTrash);
+
+document.getElementById("key-form").addEventListener("submit", saveKeyFromDialog);
+document.getElementById("key-cancel").addEventListener("click", function () {
+  document.getElementById("key-dialog").close();
+});
+document.getElementById("key-clear").addEventListener("click", function () {
+  document.getElementById("key-form").apiKey.value = "";
+});
+document.getElementById("key-paste").addEventListener("click", async function () {
+  try {
+    const text = await navigator.clipboard.readText();
+    document.getElementById("key-form").apiKey.value = (text || "").trim();
+  } catch (err) {
+    alert(t("clipboardFailed"));
+  }
+});
+document.getElementById("models-close").addEventListener("click", function () {
+  document.getElementById("models-dialog").close();
+});
 
 /* Switching language re-renders everything, including the provider cards,
  * the toolbar notes and the open dialogs' labels. */

@@ -42,7 +42,7 @@
         root.setAttribute("data-theme", theme);
       })();
     </script>
-    <link rel="stylesheet" href="/styles.css?v=3" />
+    <link rel="stylesheet" href="/styles.css?v=4" />
   </head>
   <body>
     <div id="app">
@@ -371,6 +371,55 @@
     </dialog>
 
     <script src="/ui.js?v=1"></script>
-    <script src="app.js?v=9"></script>
+    <dialog id="key-dialog">
+      <form id="key-form" class="form">
+        <h2 id="key-title">API Key</h2>
+        <p class="note" data-i18n="keyDialogNote">
+          Ключ хранится только в этом браузере и уходит напрямую провайдеру — на
+          наш сервер он не отправляется.
+        </p>
+
+        <label>
+          <span data-i18n="keyRowLabel">API Key</span>
+          <input
+            type="password"
+            name="apiKey"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+
+        <div class="dialog-actions">
+          <button class="btn btn-ghost" type="button" id="key-paste" data-i18n="keyPaste">
+            Вставить из буфера
+          </button>
+          <button class="btn btn-ghost" type="button" id="key-clear" data-i18n="keyClear">
+            Очистить
+          </button>
+          <button class="btn btn-ghost" type="button" id="key-cancel" data-i18n="cancel">
+            Отмена
+          </button>
+          <button class="btn btn-primary" type="submit" data-i18n="save">
+            Сохранить
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="models-dialog">
+      <div class="trash-body">
+        <h2 id="models-title">Модели</h2>
+        <p class="note" id="models-endpoint"></p>
+        <p class="note" id="models-configured"></p>
+        <div id="models-list" class="providers"></div>
+        <div class="dialog-actions">
+          <button class="btn btn-primary" type="button" id="models-close" data-i18n="close">
+            Закрыть
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <script src="app.js?v=10"></script>
   </body>
 </html>
