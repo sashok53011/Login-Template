@@ -682,6 +682,45 @@ void main() {
     expect(find.text('OpenAI'), findsOneWidget);
   });
 
+  testWidgets('a provider switched off for everybody asks the user to turn it off',
+      (WidgetTester tester) async {
+    final backend = FakeAiBackend(
+      _catalogue(<Map<String, dynamic>>[
+        _entry(
+          'openai',
+          'OpenAI',
+          1,
+          enabled: true,
+          status: 'disabled_for_all',
+        ),
+      ]),
+    );
+
+    await openProviders(tester, backend, FakeStorage());
+
+    expect(find.text('отключён админом'), findsOneWidget);
+    expect(find.textContaining('Администратор отключил'), findsOneWidget);
+
+    // Such a provider cannot be tested any more.
+    final testButton = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Проверить и список моделей'),
+    );
+    expect(testButton.onPressed, isNull);
+
+    // Turning it off is offered right there.
+    final turnOff = find.widgetWithText(FilledButton, 'Выключить');
+    await tester.ensureVisible(turnOff);
+    await tester.pumpAndSettle();
+    await tester.tap(turnOff);
+    await tester.pumpAndSettle();
+
+    final sent = backend.putBodies.last['providers'] as List<dynamic>;
+    final openai = sent.firstWhere(
+      (dynamic p) => (p as Map<String, dynamic>)['id'] == 'openai',
+    ) as Map<String, dynamic>;
+    expect(openai['enabled'], false);
+  });
+
   testWidgets('a rejected key is reported as a failure',
       (WidgetTester tester) async {
     final backend = FakeAiBackend(

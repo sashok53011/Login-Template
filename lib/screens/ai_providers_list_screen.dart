@@ -792,6 +792,24 @@ class _ProviderCard extends ConsumerWidget {
                                 ),
                               ),
                             ),
+                          if (provider.isDisabledForAll)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.error,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                translate('ai.badgeDisabledForAll', language),
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onError,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                       Text(
@@ -835,6 +853,27 @@ class _ProviderCard extends ConsumerWidget {
                   style: theme.textTheme.bodySmall,
                 ),
               ),
+            if (provider.isDisabledForAll)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      translate('ai.disabledForAllHint', language),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    FilledButton.tonalIcon(
+                      onPressed: () => onToggle(false),
+                      icon: const Icon(Icons.power_settings_new),
+                      label: Text(translate('ai.turnOff', language)),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -858,8 +897,11 @@ class _ProviderCard extends ConsumerWidget {
                   label: Text(translate('ai.enterKey', language)),
                 ),
                 TextButton.icon(
-                  onPressed:
-                      provider.isDead || testing ? null : onTest,
+                  onPressed: provider.isDead ||
+                          provider.isDisabledForAll ||
+                          testing
+                      ? null
+                      : onTest,
                   icon: testing
                       ? const SizedBox(
                           width: 16,

@@ -25,6 +25,11 @@ const CATALOGUE_VERSION = 2;
 const STATUS_ACTIVE = "active";
 const STATUS_DEAD = "dead";
 
+/// Switched off for everybody: it disappears from a user's list while they
+/// have it off, and stays visible with a mark for those who still have it on,
+/// so they can turn it off themselves.
+const STATUS_DISABLED = "disabled_for_all";
+
 const ORIGIN_ADMIN = "admin";
 const ORIGIN_USER = "user";
 
@@ -94,7 +99,13 @@ function asInt(value) {
 }
 
 function asStatus(value) {
-  return value === STATUS_DEAD ? STATUS_DEAD : STATUS_ACTIVE;
+  if (value === STATUS_DEAD) {
+    return STATUS_DEAD;
+  }
+  if (value === STATUS_DISABLED) {
+    return STATUS_DISABLED;
+  }
+  return STATUS_ACTIVE;
 }
 
 function asOrigin(value) {
@@ -535,11 +546,17 @@ function viewFor(flags, canEdit, userId) {
       continue;
     }
 
-    // A provider the administrator marked as dead disappears from a regular
-    // user's list — but only while that user has it switched off. An entry
-    // that is switched on is never touched, and the administrator always sees
-    // everything so the mark can be undone.
-    if (!canEdit && provider.status === STATUS_DEAD && !isEnabled) {
+    // An entry the administrator marked as dead, or as switched off for
+    // everybody, disappears from a regular user's list — but only while that
+    // user has it turned off. Entries that are switched on stay visible so the
+    // owner can see the mark and turn them off; the administrator always sees
+    // everything, so any mark can be undone.
+    if (
+      !canEdit &&
+      (provider.status === STATUS_DEAD ||
+        provider.status === STATUS_DISABLED) &&
+      !isEnabled
+    ) {
       continue;
     }
 
@@ -600,6 +617,7 @@ module.exports = {
   CATALOGUE_VERSION: CATALOGUE_VERSION,
   STATUS_ACTIVE: STATUS_ACTIVE,
   STATUS_DEAD: STATUS_DEAD,
+  STATUS_DISABLED: STATUS_DISABLED,
   ORIGIN_ADMIN: ORIGIN_ADMIN,
   ORIGIN_USER: ORIGIN_USER,
   configDir: configDir,

@@ -148,6 +148,10 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
         'отправляются.',
     'ai.badgeMine': 'ваш',
     'ai.badgeDead': 'не работает',
+    'ai.badgeDisabledForAll': 'отключён админом',
+    'ai.disabledForAllHint': 'Администратор отключил этого провайдера для всех. '
+        'Выключите его, чтобы убрать из списка.',
+    'ai.turnOff': 'Выключить',
     'ai.priority': 'Приоритет: {n}',
     'ai.keyNotSet': '(не задан)',
     'ai.keyEnter': 'ввести',
@@ -349,6 +353,10 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
         'server.',
     'ai.badgeMine': 'yours',
     'ai.badgeDead': 'not working',
+    'ai.badgeDisabledForAll': 'switched off by admin',
+    'ai.disabledForAllHint': 'The administrator switched this provider off for '
+        'everybody. Turn it off to remove it from your list.',
+    'ai.turnOff': 'Turn off',
     'ai.priority': 'Priority: {n}',
     'ai.keyNotSet': '(not set)',
     'ai.keyEnter': 'enter',
@@ -561,6 +569,10 @@ const Map<String, Map<String, String>> kTranslations = <String, Map<String, Stri
         'nicht an den Server gesendet.',
     'ai.badgeMine': 'Ihr',
     'ai.badgeDead': 'funktioniert nicht',
+    'ai.badgeDisabledForAll': 'vom Admin abgeschaltet',
+    'ai.disabledForAllHint': 'Der Administrator hat diesen Anbieter für alle '
+        'abgeschaltet. Schalten Sie ihn aus, um ihn aus der Liste zu entfernen.',
+    'ai.turnOff': 'Ausschalten',
     'ai.priority': 'Priorität: {n}',
     'ai.keyNotSet': '(nicht festgelegt)',
     'ai.keyEnter': 'eingeben',

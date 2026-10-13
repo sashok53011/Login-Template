@@ -233,6 +233,11 @@ ihn entfernt hat, und lässt sich auf der Webseite wiederherstellen. Die
 Wiederherstellung nutzt dieselbe `id` und setzt `status: dead` zurück, damit die
 bereits eingegebenen API-Keys weiter funktionieren.
 
+Ein Anbieter hat einen von drei Zuständen. `dead` ist nur ein Hinweis — nutzbar
+bleibt er. `disabled_for_all` ist der große Schalter: wer ihn aus hat, sieht ihn
+gar nicht mehr, und wer ihn noch an hat, bekommt die Markierung „vom Admin
+abgeschaltet" plus einen **Ausschalten**-Knopf, der ihn auch dort entfernt.
+
 Dieselbe Liste gibt es im Browser unter
 `https://app.devhorizon.online/ai-providers/` (PocketBase liefert die Seite
 selbst aus, also derselbe Origin). Dort setzt ein Administrator das Häkchen

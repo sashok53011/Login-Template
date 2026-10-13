@@ -226,6 +226,12 @@ entry or a proposal its author removed — is kept in a bin
 it, and can be restored from the web page. Restoring uses the same `id` and
 clears `status: dead`, so the API keys people already entered keep working.
 
+A provider carries one of three statuses. `dead` is a note for information —
+the provider still works and can be used. `disabled_for_all` is the heavy
+switch: it disappears for users who have it off, and those who still have it on
+get a «switched off by admin» mark plus a **Turn off** button that removes it
+from their list as well.
+
 The same list is in a browser at `https://app.devhorizon.online/ai-providers/`
 (PocketBase serves that page itself, so it is the same origin). There an
 administrator ticks “Вход администратора (superuser)” to manage the catalogue;

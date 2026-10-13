@@ -52,6 +52,12 @@ class AiProvider extends Equatable {
   final bool mine;
 
   bool get isDead => status == 'dead';
+
+  /// Switched off for everybody by the administrator. Such an entry is hidden
+  /// from users who have it off, and listed with a mark for those who still
+  /// have it on, so they can turn it off.
+  bool get isDisabledForAll => status == 'disabled_for_all';
+
   bool get isProposal => origin == 'user';
 
   factory AiProvider.fromJson(Map<String, dynamic> json) {

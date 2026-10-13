@@ -69,6 +69,11 @@ const STR = {
     badgeFrom: "от {name}",
     badgeFromUser: "от пользователя",
     badgeDead: "не работает",
+    badgeDisabledForAll: "отключён админом",
+    disabledForAllHint:
+      "Администратор отключил этого провайдера для всех. Выключите его, чтобы убрать из списка.",
+    turnOff: "Выключить",
+    statusDisabled: "Отключён для всех — убрать у всех",
     rowPriority: "Приоритет",
     linkLogin: "Страница логина",
     linkGetKey: "Получить API-ключ",
@@ -173,6 +178,11 @@ const STR = {
     badgeFrom: "from {name}",
     badgeFromUser: "from a user",
     badgeDead: "not working",
+    badgeDisabledForAll: "switched off by admin",
+    disabledForAllHint:
+      "The administrator switched this provider off for everybody. Turn it off to remove it from your list.",
+    turnOff: "Turn off",
+    statusDisabled: "Switched off for everybody - remove for all",
     rowPriority: "Priority",
     linkLogin: "Login page",
     linkGetKey: "Get API key",
@@ -277,6 +287,11 @@ const STR = {
     badgeFrom: "von {name}",
     badgeFromUser: "von einem Benutzer",
     badgeDead: "funktioniert nicht",
+    badgeDisabledForAll: "vom Admin abgeschaltet",
+    disabledForAllHint:
+      "Der Administrator hat diesen Anbieter für alle abgeschaltet. Schalten Sie ihn aus, um ihn aus der Liste zu entfernen.",
+    turnOff: "Ausschalten",
+    statusDisabled: "Für alle abgeschaltet - überall entfernen",
     rowPriority: "Priorität",
     linkLogin: "Anmeldeseite",
     linkGetKey: "API-Schlüssel erhalten",
@@ -752,6 +767,13 @@ function providerCard(provider) {
     badge.textContent = t("badgeDead");
     title.appendChild(badge);
   }
+
+  if (provider.status === "disabled_for_all") {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = t("badgeDisabledForAll");
+    title.appendChild(badge);
+  }
   body.appendChild(title);
 
   const dl = document.createElement("dl");
@@ -773,6 +795,33 @@ function providerCard(provider) {
 
   addRow(dl, t("rowPriority"), String(provider.fallbackPriority));
   body.appendChild(dl);
+
+  // Switched off for everybody: whoever still has it on is asked to turn it
+  // off, which is what finally removes it from that user's list.
+  if (provider.status === "disabled_for_all") {
+    const blocked = document.createElement("div");
+    blocked.className = "blocked";
+
+    const note = document.createElement("div");
+    note.className = "blocked-note";
+    note.textContent = t("disabledForAllHint");
+    blocked.appendChild(note);
+
+    const turnOff = document.createElement("button");
+    turnOff.type = "button";
+    turnOff.className = "btn btn-ghost btn-mini";
+    turnOff.textContent = t("turnOff");
+    turnOff.addEventListener("click", function () {
+      provider.enabled = false;
+      card.classList.add("is-off");
+      const box = card.querySelector('input[type="checkbox"]');
+      if (box) box.checked = false;
+      persist();
+    });
+    blocked.appendChild(turnOff);
+
+    body.appendChild(blocked);
+  }
 
   const block = statsBlock(provider);
   if (block) {
