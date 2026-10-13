@@ -95,6 +95,10 @@ const STR = {
     modelsNoStats: "нет данных",
     clipboardFailed:
       "Не удалось прочитать буфер обмена. Разрешите доступ или вставьте вручную.",
+    localNote:
+      "Локальный адрес: из браузера доступен только http://localhost, и сам сервер должен разрешать CORS. Из приложения этих ограничений нет.",
+    corsLocal:
+      "Браузер не пустил запрос к локальному провайдеру: он не разрешает CORS, либо адрес по http, а страница по https. Для Ollama задайте OLLAMA_ORIGINS={origin} и перезапустите его; в LM Studio включите CORS в настройках сервера. Надёжнее проверять локальные модели из приложения.",
     statusDisabled: "Отключён для всех — убрать у всех",
     rowPriority: "Приоритет",
     linkLogin: "Страница логина",
@@ -226,6 +230,10 @@ const STR = {
     modelsNoStats: "no data",
     clipboardFailed:
       "Could not read the clipboard. Allow access or paste it by hand.",
+    localNote:
+      "Local address: from a browser only http://localhost is reachable, and the server itself must allow CORS. The app has no such restriction.",
+    corsLocal:
+      "The browser could not reach this local provider: it does not allow CORS, or the address is http while the page is https. For Ollama set OLLAMA_ORIGINS={origin} and restart it; in LM Studio enable CORS in the server settings. Checking local models from the app is easier.",
     statusDisabled: "Switched off for everybody - remove for all",
     rowPriority: "Priority",
     linkLogin: "Login page",
@@ -357,6 +365,10 @@ const STR = {
     modelsNoStats: "keine Daten",
     clipboardFailed:
       "Die Zwischenablage konnte nicht gelesen werden. Erlauben Sie den Zugriff oder fügen Sie den Wert von Hand ein.",
+    localNote:
+      "Lokale Adresse: Aus dem Browser ist nur http://localhost erreichbar, und der Server selbst muss CORS erlauben. In der App gibt es diese Einschränkung nicht.",
+    corsLocal:
+      "Der Browser konnte diesen lokalen Anbieter nicht erreichen: Er erlaubt kein CORS, oder die Adresse ist http, während die Seite https ist. Bei Ollama OLLAMA_ORIGINS={origin} setzen und neu starten; in LM Studio CORS in den Servereinstellungen aktivieren. Lokale Modelle lassen sich in der App einfacher prüfen.",
     statusDisabled: "Für alle abgeschaltet - überall entfernen",
     rowPriority: "Priorität",
     linkLogin: "Anmeldeseite",
@@ -885,6 +897,14 @@ function providerCard(provider) {
   );
   body.appendChild(keyRow);
 
+  // Local model servers need a word of warning before the button is pressed.
+  if (isLocalUrl(provider.url)) {
+    const local = document.createElement("div");
+    local.className = "local-note";
+    local.textContent = t("localNote");
+    body.appendChild(local);
+  }
+
   // Switched off for everybody: whoever still has it on is asked to turn it
   // off, which is what finally removes it from that user's list.
   if (provider.status === "disabled_for_all") {
@@ -1325,6 +1345,14 @@ function saveKeyFromDialog(event) {
   renderProviders();
 }
 
+/// Local model servers (Ollama, LM Studio, vLLM, …) are special: the browser
+/// can only reach http://localhost, and only when the server allows our origin.
+function isLocalUrl(url) {
+  return /^(https?:\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/i.test(
+    (url || "").trim(),
+  );
+}
+
 function modelsEndpoint(baseUrl) {
   let url = (baseUrl || "").trim().replace(/\/+$/, "");
   if (url.indexOf("anthropic.com") >= 0 && url.indexOf("/v1") < 0) {
@@ -1393,7 +1421,9 @@ async function testProvider(provider) {
       }
     }
   } catch (err) {
-    error = t("corsOrNetwork");
+    error = isLocalUrl(provider.url)
+      ? t("corsLocal", { origin: location.origin })
+      : t("corsOrNetwork");
   }
 
   const wanted = (provider.model || "").toLowerCase();
